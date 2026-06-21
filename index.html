@@ -530,7 +530,7 @@ function renderPanelList(dateStr){
       var hasAnyRows = colorOrder.length > 0 || sizeOnlyRows.length > 0;
       if (hasAnyRows){
         var showQty4 = ev.stage !== "instruct";
-        var qty4Label = ev.stage === "completed" ? "입고수량" : "재단수량";
+        var qty4Label = (ev.stage === "completed" || ev.stage === "completed_p") ? "입고수량" : "예정수량";
         var table = document.createElement("table"); table.className = "panel-variant-table";
         var thead = document.createElement("thead"); var trHead = document.createElement("tr");
         var headerCols = showQty4 ? ["컬러","사이즈","수량",qty4Label] : ["컬러","사이즈","수량"];
@@ -561,6 +561,66 @@ function renderPanelList(dateStr){
       }
     }
     item.addEventListener("click", function(){ renderPanelForm(dateStr, ev); }); panel.appendChild(item);
+
+    // 파샬 입고(completed_p) 이벤트에 잔여 입고 예정 생성 UI 추가
+    if (ev.stage === "completed_p" && ev.variants){
+      var remaining = calcRemainingVariants(ev.variants);
+      if (remaining.length > 0){
+        var remainCard = document.createElement("div");
+        remainCard.style.cssText = "border:1px dashed var(--color-border);border-radius:var(--radius-md);padding:10px;margin-bottom:8px;background:var(--color-bg-secondary);";
+
+        var remainTitle = document.createElement("div");
+        remainTitle.style.cssText = "font-size:11px;font-weight:600;color:var(--color-text-secondary);margin-bottom:8px;";
+        remainTitle.textContent = "📦 잔여 수량";
+        remainCard.appendChild(remainTitle);
+
+        // 잔여 수량 테이블
+        var tbl = document.createElement("table");
+        tbl.className = "panel-variant-table"; tbl.style.marginBottom = "10px";
+        var thead = document.createElement("thead"); var trH = document.createElement("tr");
+        ["컬러","사이즈","잔여"].forEach(function(h){ var th=document.createElement("th"); th.textContent=h; trH.appendChild(th); });
+        thead.appendChild(trH); tbl.appendChild(thead);
+        var tbody = document.createElement("tbody");
+        remaining.forEach(function(r){
+          var tr = document.createElement("tr");
+          var c1=document.createElement("td"); c1.className="pvt-color"; c1.textContent=(r.type==="size"?(r.parentColor||"-"):r.color)||"-"; tr.appendChild(c1);
+          var c2=document.createElement("td"); c2.textContent=r.size||"-"; tr.appendChild(c2);
+          var c3=document.createElement("td"); c3.textContent=r.qty; tr.appendChild(c3);
+          tbody.appendChild(tr);
+        });
+        tbl.appendChild(tbody); remainCard.appendChild(tbl);
+
+        // 날짜 선택 + 생성 버튼
+        var dateRow = document.createElement("div"); dateRow.style.cssText="display:flex;gap:8px;align-items:center;";
+        var dateLab = document.createElement("div"); dateLab.className="field-label"; dateLab.style.cssText="margin:0;white-space:nowrap;font-size:11px;"; dateLab.textContent="입고 예정일";
+        var dateInp = document.createElement("input"); dateInp.type="date"; dateInp.value=dateStr;
+        dateInp.style.cssText="flex:1;padding:6px 8px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:12px;font-family:inherit;background:var(--color-bg);color:var(--color-text);";
+        var genBtn = document.createElement("button"); genBtn.textContent="입고 예정 생성";
+        genBtn.style.cssText="font-size:12px;padding:6px 10px;background:var(--color-text);color:#fff;border:none;border-radius:var(--radius-md);cursor:pointer;white-space:nowrap;";
+        genBtn.addEventListener("click", function(e){
+          e.stopPropagation();
+          genBtn.disabled=true; genBtn.textContent="생성 중...";
+          var newPayload = {
+            date: dateInp.value,
+            category: "production",
+            stage: "expected",
+            company: ev.company||"",
+            item: ev.item||"",
+            imageUrl: "",
+            variants: stringifyVariants(remaining),
+            description: ""
+          };
+          apiPost({action:"create", data:newPayload}).then(function(res){
+            if(res.success===false){ showToast(res.error||"생성 중 오류가 발생했습니다."); genBtn.disabled=false; genBtn.textContent="입고 예정 생성"; return; }
+            showToast("입고 예정 일정이 생성되었습니다!");
+            refreshAllAndShowList(dateInp.value);
+          }).catch(function(){ showToast("생성 중 오류가 발생했습니다."); genBtn.disabled=false; genBtn.textContent="입고 예정 생성"; });
+        });
+        dateRow.appendChild(dateLab); dateRow.appendChild(dateInp); dateRow.appendChild(genBtn);
+        remainCard.appendChild(dateRow);
+        panel.appendChild(remainCard);
+      }
+    }
   });
 }
 function renderPanelForm(dateStr, ev){
@@ -725,7 +785,7 @@ function renderPanelForm(dateStr, ev){
     var vLabel=document.createElement("div"); vLabel.className="variant-row";
     vLabel.style.gridTemplateColumns=sq4?"1fr 1fr 0.8fr 0.8fr 26px":"1fr 1fr 0.9fr 26px";
     vLabel.style.marginBottom="4px";
-    var hl=sq4?["컬러","사이즈","수량",csl==="completed"?"입고수량":"재단수량"]:["컬러","사이즈","수량"];
+    var hl=sq4?["컬러","사이즈","수량",(csl==="completed"||csl==="completed_p")?"입고수량":"예정수량"]:["컬러","사이즈","수량"];
     hl.forEach(function(t){ var lab=document.createElement("div"); lab.className="field-label"; lab.style.margin="0"; lab.textContent=t; vLabel.appendChild(lab); });
     vLabel.appendChild(document.createElement("div")); formWrap.appendChild(vLabel);
     variantListEl=document.createElement("div"); formWrap.appendChild(variantListEl); renderVariantRows();
@@ -739,7 +799,7 @@ function renderPanelForm(dateStr, ev){
     var co=variants.filter(function(v){ return v.type!=="size"&&v.color; }).map(function(v){ return v.color; });
     var uc=co.filter(function(c,i){ return co.indexOf(c)===i; });
     var sv=fields.stage?fields.stage.value:"";
-    var q4=sv==="completed"?"입고수량":"재단수량";
+    var q4=(sv==="completed"||sv==="completed_p")?"입고수량":"예정수량";
     variants.forEach(function(v,idx){
       var row=document.createElement("div"); row.className="variant-row";
       var sq=sv!=="instruct";
@@ -851,6 +911,16 @@ function renderPanelForm(dateStr, ev){
 
 function refreshAllAndShowList(dateStr){
   Promise.all([loadEvents(), loadHolidays(view.year, view.month)]).then(function(){ render(); renderPanelList(dateStr); });
+}
+function calcRemainingVariants(variantStr){
+  // 파샬 입고 후 잔여수량 계산: qty - cutQty
+  var parsed = parseVariants(variantStr);
+  return parsed.map(function(v){
+    var qty = parseInt(v.qty) || 0;
+    var cutQty = parseInt(v.cutQty) || 0;
+    var remaining = qty - cutQty;
+    return { type: v.type, color: v.color||"", parentColor: v.parentColor||"", size: v.size||"", qty: remaining > 0 ? String(remaining) : "0", cutQty: "" };
+  }).filter(function(v){ return parseInt(v.qty) > 0; });
 }
 function parseVariants(str){
   if (!str) return [{type:"color",color:"",size:"",qty:"",cutQty:""}];
