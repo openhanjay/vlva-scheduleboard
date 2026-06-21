@@ -275,9 +275,13 @@ function showToast(msg){
   setTimeout(function(){ toastRoot.innerHTML = ""; }, 2500);
 }
 function stageLabel(v, cat){
+  if (v === "expected_p") return "파샬 예정";
+  if (v === "completed_p") return "파샬 입고";
   var s = getStages(cat).find(function(s){ return s.value === v; });
   return s ? s.label : v;
 }
+function getBaseStage(stage){ return (stage==="expected_p"?"expected":(stage==="completed_p"?"completed":stage)); }
+function isPartial(stage){ return stage==="expected_p"||stage==="completed_p"; }
 function apiGet(action, extraParams){
   var url = API_URL + "?action=" + action;
   if (extraParams) Object.keys(extraParams).forEach(function(k){ url += "&" + k + "=" + encodeURIComponent(extraParams[k]); });
@@ -607,12 +611,38 @@ function renderPanelForm(dateStr, ev){
     return inp;
   }
   function mkStage(val){
+    // val은 base stage이거나 _p variant일 수 있음
+    var baseVal = getBaseStage(val);
     var wrap=document.createElement("div"); wrap.className="field";
     var lab=document.createElement("div"); lab.className="field-label"; lab.textContent="단계"; wrap.appendChild(lab);
     var sel=document.createElement("select");
-    getStages(cat).forEach(function(s){ var o=document.createElement("option"); o.value=s.value; o.textContent=s.label; if(s.value===val) o.selected=true; sel.appendChild(o); });
+    getStages(cat).forEach(function(s){ var o=document.createElement("option"); o.value=s.value; o.textContent=s.label; if(s.value===baseVal) o.selected=true; sel.appendChild(o); });
     sel.addEventListener("change",function(){ recordPicked=false; buildForm(sel.value); });
     wrap.appendChild(sel); fields["stage"]=sel; formWrap.appendChild(wrap);
+    // 파샬/전체 체크박스 (단계 바로 아래)
+    if (cat==="production" && (baseVal==="expected"||baseVal==="completed")){
+      var pbWrap=document.createElement("div"); pbWrap.id="pf-partial-wrap";
+      pbWrap.style.cssText="display:flex;gap:20px;align-items:center;margin-bottom:12px;padding:6px 0;";
+      var partial=isPartial(val);
+      if(baseVal==="expected"){
+        // 파샬, 전체 라디오
+        ["파샬","전체"].forEach(function(label){
+          var lbl=document.createElement("label"); lbl.style.cssText="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--color-text);";
+          var rb=document.createElement("input"); rb.type="radio"; rb.name="pf-partial"; rb.value=label; rb.id="pf-partial-"+label;
+          if((partial&&label==="파샬")||(!partial&&label==="전체")) rb.checked=true;
+          lbl.appendChild(rb); lbl.appendChild(document.createTextNode(label));
+          pbWrap.appendChild(lbl);
+        });
+      } else if(baseVal==="completed"){
+        // 파샬 체크박스만
+        var lbl=document.createElement("label"); lbl.style.cssText="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--color-text);";
+        var cb=document.createElement("input"); cb.type="checkbox"; cb.id="pf-partial-파샬"; cb.value="파샬";
+        if(partial) cb.checked=true;
+        lbl.appendChild(cb); lbl.appendChild(document.createTextNode("파샬"));
+        pbWrap.appendChild(lbl);
+      }
+      formWrap.appendChild(pbWrap);
+    }
   }
 
   function buildLeaveForm(){
@@ -721,11 +751,29 @@ function renderPanelForm(dateStr, ev){
         sel.addEventListener("change",function(){ v.parentColor=sel.value; }); row.appendChild(sel);
         var sk=sq?["size","qty","cutQty"]:["size","qty"];
         var sp=sq?["사이즈","수량",q4]:["사이즈","수량"];
-        sk.forEach(function(k,ci){ var inp=document.createElement("input"); inp.type="text"; inp.placeholder=sp[ci]; inp.value=v[k]||""; inp.addEventListener("input",function(){ v[k]=inp.value; }); row.appendChild(inp); });
+        var SIZES2=["","F","XXS","XS","S","M","L","XL","XXL"];
+        sk.forEach(function(k,ci){
+          if(k==="size"){
+            var sel=document.createElement("select"); sel.style.cssText="font-size:12px;padding:6px 4px;width:100%;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text);font-family:inherit;";
+            SIZES2.forEach(function(sz){ var o=document.createElement("option"); o.value=sz; o.textContent=sz||"사이즈"; if(v[k]===sz) o.selected=true; sel.appendChild(o); });
+            sel.addEventListener("change",function(){ v[k]=sel.value; }); row.appendChild(sel);
+          } else {
+            var inp=document.createElement("input"); inp.type="text"; inp.placeholder=sp[ci]; inp.value=v[k]||""; inp.addEventListener("input",function(){ v[k]=inp.value; }); row.appendChild(inp);
+          }
+        });
       } else {
         var ck=sq?["color","size","qty","cutQty"]:["color","size","qty"];
         var cp=sq?["컬러","사이즈","수량",q4]:["컬러","사이즈","수량"];
-        ck.forEach(function(k,ci){ var inp=document.createElement("input"); inp.type="text"; inp.placeholder=cp[ci]; inp.value=v[k]||""; inp.addEventListener("input",function(){ v[k]=inp.value; }); if(k==="color") inp.addEventListener("blur",function(){ renderVariantRows(); }); row.appendChild(inp); });
+        var SIZES=["","F","XXS","XS","S","M","L","XL","XXL"];
+        ck.forEach(function(k,ci){
+          if(k==="size"){
+            var sel=document.createElement("select"); sel.style.cssText="font-size:12px;padding:6px 4px;width:100%;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text);font-family:inherit;";
+            SIZES.forEach(function(sz){ var o=document.createElement("option"); o.value=sz; o.textContent=sz||"사이즈"; if(v[k]===sz) o.selected=true; sel.appendChild(o); });
+            sel.addEventListener("change",function(){ v[k]=sel.value; }); row.appendChild(sel);
+          } else {
+            var inp=document.createElement("input"); inp.type="text"; inp.placeholder=cp[ci]; inp.value=v[k]||""; inp.addEventListener("input",function(){ v[k]=inp.value; }); if(k==="color") inp.addEventListener("blur",function(){ renderVariantRows(); }); row.appendChild(inp);
+          }
+        });
       }
       var rmBtn=document.createElement("button"); rmBtn.className="icon-btn"; rmBtn.textContent="✕"; rmBtn.disabled=variants.length===1;
       rmBtn.addEventListener("click",function(){ if(variants.length===1) return; variants.splice(idx,1); renderVariantRows(); });
@@ -772,12 +820,21 @@ function renderPanelForm(dateStr, ev){
       descVal = fields.description ? fields.description.value : "";
     }
 
+    // 파샬/전체 선택 반영해 stage 합성
+    var finalStage = fields.stage ? fields.stage.value : "";
+    if(cat==="production" && (finalStage==="expected"||finalStage==="completed")){
+      var partialRadio = document.querySelector('input[name="pf-partial"]:checked');
+      var partialCheck = document.getElementById("pf-partial-파샬");
+      var isP = (partialRadio&&partialRadio.value==="파샬") || (partialCheck&&partialCheck.checked);
+      if(isP) finalStage = finalStage + "_p";
+    }
+
     saveBtn.disabled=true; saveBtn.textContent="저장 중...";
     var payload={
       id:isEdit?ev.id:undefined,
       date:startVal,
       category:cat,
-      stage:fields.stage?fields.stage.value:"",
+      stage:finalStage,
       company:fields.company?fields.company.value:"",
       item:fields.item?fields.item.value:"",
       imageUrl:isEdit?(ev.imageUrl||""):"",
