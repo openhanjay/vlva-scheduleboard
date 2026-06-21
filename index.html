@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>VLVD 시즌 준비 운영 캘린더</title>
+<style>
+  :root {
+    --color-bg: #ffffff;
+    --color-bg-secondary: #f4f6f9;
+    --color-bg-tertiary: #eceff4;
+    --color-border: #dce1ea;
+    --color-text: #1a1a18;
+    --color-text-secondary: #6b6a64;
+    --color-text-tertiary: #9b9a93;
+    --color-info: #0c447c;
+    --color-info-bg: #e6f1fb;
+    --color-today-bg: #eef1f6;
+    --sat-color: #2f6fbf;
+    --sun-color: #d14343;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    background: var(--color-bg-secondary);
+    color: var(--color-text);
+    padding: 48px 32px;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+  }
+  .layout {
+    max-width: 1480px;
+    width: 100%;
+    margin: 0 auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 22px;
+  }
+  .main-col { flex: 1; min-width: 0; }
+  .side-col {
+    width: 340px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 48px;
+    margin-top: 14px;
+  }
+  .topbar {
+    margin-top: 14px;
+    margin-bottom: 16px;
+  }
+  .topbar-title-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px; flex-wrap: wrap; gap: 12px;
+  }
+  .topbar-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .topbar-left h1 { font-size: 26px; font-weight: 700; margin: 0; letter-spacing: -0.5px; }
+  .topbar-right-group { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .topbar-right { display: flex; gap: 8px; align-items: flex-end; }
+  .topbar-bottom-row {
+    display: flex; align-items: center; justify-content: flex-end;
+    flex-wrap: wrap; gap: 12px;
+  }
+  button {
+    font-family: inherit;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--color-text);
+  }
+  button:hover { background: var(--color-bg-tertiary); }
+  button.primary { background: var(--color-text); color: #fff; border-color: var(--color-text); }
+  button.primary:hover { opacity: 0.85; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-right: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--color-text-secondary); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .calendar-card {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .weekday-row {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0,1fr));
+    background: var(--color-bg);
+    border-bottom: 2px solid var(--color-border);
+  }
+  .weekday-row div { text-align: center; padding: 12px 0; font-size: 15px; font-weight: 700; color: var(--color-text-secondary); }
+  .weekday-row div.sun { color: var(--sun-color); }
+  .weekday-row div.sat { color: var(--sat-color); }
+  .grid { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); }
+  .cell {
+    min-height: 136px;
+    border-right: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    padding: 10px;
+    cursor: pointer;
+    position: relative;
+  }
+  .cell.outside { background: var(--color-bg-secondary); cursor: default; }
+  .cell.today { background: var(--color-bg); box-shadow: inset 0 0 0 2px #1a1a18; }
+  .cell.selected { box-shadow: inset 0 0 0 2px #6ab04c; }
+  .daynum { font-size: 15px; margin-bottom: 6px; }
+  .daynum.today { color: var(--color-text); font-weight: 600; }
+  .daynum.sun { color: var(--sun-color); }
+  .daynum.sat { color: var(--sat-color); }
+  .holiday-name { font-size: 11px; color: var(--sun-color); margin-bottom:2px; }
+  .event-card { border-radius: 5px; margin-bottom: 4px; padding: 4px 7px; cursor: pointer; display: flex; gap: 6px; align-items: flex-start; }
+  .event-card img.thumb { width: 24px; height: 24px; border-radius: 4px; object-fit: cover; flex-shrink: 0; margin-top: 1px; }
+  .event-text { overflow: hidden; min-width: 0; flex: 1; }
+  .event-line1 { font-size: 9px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .event-title { font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+
+  /* ---------- 사이드 패널 ---------- */
+  .panel {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 18px;
+    max-height: calc(100vh - 96px);
+    overflow-y: auto;
+  }
+  .panel-empty { font-size: 13px; color: var(--color-text-tertiary); text-align: center; padding: 40px 10px; }
+  .panel-date { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .panel-subtitle { font-size: 12px; color: var(--color-text-tertiary); margin-bottom: 14px; }
+  .panel-add-btn { width: 100%; margin-bottom: 14px; }
+  .panel-list-item {
+    border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    padding: 8px 10px; margin-bottom: 8px; cursor: pointer;
+  }
+  .panel-list-item:hover { background: var(--color-bg-secondary); }
+  .panel-list-item.active { border-color: var(--color-text); }
+  .panel-list-cat { font-size: 11px; font-weight: 500; margin-bottom: 2px; }
+  .panel-list-main { font-size: 13px; }
+  .panel-list-variant-wrap { margin-top: 4px; }
+  .panel-list-variant { font-size: 11px; color: var(--color-text-secondary); margin-top: 2px; }
+  .panel-back-btn { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 12px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; border: none; background: none; padding: 0; }
+  .panel-back-btn:hover { color: var(--color-text); background: none; }
+
+  h2.panel-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
+  .cat-row { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .cat-btn { padding: 5px 10px; font-size: 12px; border-radius: var(--radius-md); border: 1px solid var(--color-border); background: var(--color-bg); cursor: pointer; }
+  .field-label { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px; }
+  .field { margin-bottom: 10px; }
+  .field input, .field textarea, .field select {
+    width: 100%; padding: 7px 9px; border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    font-size: 13px; font-family: inherit; background: var(--color-bg); color: var(--color-text);
+  }
+  .variant-row { display: grid; grid-template-columns: 1fr 1fr 0.9fr 26px; gap: 5px; margin-bottom: 6px; align-items: center; }
+  .variant-row input { padding: 6px 6px; font-size: 12px; min-width: 0; }
+  .icon-btn { width: 26px; height: 26px; display:flex; align-items:center; justify-content:center; border:1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg); cursor: pointer; flex-shrink: 0; padding: 0; }
+  .icon-btn:disabled { opacity: 0.4; cursor: default; }
+  .btn-row { display: flex; justify-content: space-between; margin-top: 16px; }
+  .btn-row-right { display: flex; gap: 8px; }
+  .danger { color: var(--sun-color); border-color: var(--sun-color); }
+  .loading-text { font-size: 13px; color: var(--color-text-secondary); padding: 30px; text-align: center; }
+  .spinner-inline { display:inline-block; width:12px; height:12px; border:2px solid var(--color-border); border-top-color: var(--color-text); border-radius:50%; animation: spin 0.7s linear infinite; vertical-align:middle; margin-right:6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--color-text); color: #fff; padding: 10px 16px; border-radius: var(--radius-md); font-size: 13px; z-index: 100; }
+
+  @media (max-width: 980px) {
+    .layout { flex-direction: column; }
+    .side-col { width: 100%; position: static; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <div class="main-col">
+    <div class="topbar">
+      <div class="topbar-title-row">
+        <div class="topbar-left">
+          <h1 id="month-label">2026년 6월</h1>
+        </div>
+        <div class="topbar-right">
+          <div class="legend">
+            <div class="legend-item"><span class="dot" style="background:#E24B4A;"></span>메인</div>
+            <div class="legend-item"><span class="dot" style="background:#378ADD;"></span>샘플</div>
+            <div class="legend-item"><span class="dot" style="background:#EF9F27;"></span>연차</div>
+            <div class="legend-item"><span class="dot" style="background:#639922;"></span>팀 일정</div>
+            <div class="legend-item"><span class="dot" style="background:#888780;"></span>타부서</div>
+          </div>
+          <button id="prev-btn">&#9666;</button>
+          <button id="today-btn">오늘</button>
+          <button id="next-btn">&#9656;</button>
+          <button id="refresh-btn">새로고침</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="calendar-card">
+      <div class="weekday-row" id="weekday-row"></div>
+      <div class="grid" id="grid">
+        <div class="loading-text"><span class="spinner-inline"></span>일정을 불러오는 중...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="side-col">
+    <div class="panel" id="panel">
+      <div class="panel-empty">날짜를 클릭하면 그날의 일정이 여기에 표시됩니다.</div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-root"></div>
+
+<script>
+var API_URL = "https://script.google.com/macros/s/AKfycbw7isRxme_nzrVS-hQf_IttVR04o2tfSmyFPx_9qrtPAmImot1c_ZmO50LV5lkOLxuj8A/exec";
+
+var CATS = {
+  production: { label: "메인", color: "#E24B4A", bg: "#FCEBEB", text: "#791F1F", text2: "#A32D2D" },
+  shoot:       { label: "샘플", color: "#378ADD", bg: "#E6F1FB", text: "#0C447C" },
+  leave:       { label: "연차", color: "#EF9F27", bg: "#FAEEDA", text: "#633806" },
+  team:        { label: "팀 일정", color: "#639922", bg: "#EAF3DE", text: "#27500A" },
+  other:       { label: "타부서", color: "#888780", bg: "#F1EFE8", text: "#444441" }
+};
+function getStages(cat){
+  return [
+    { value: "instruct", label: "투입일" },
+    { value: "expected", label: "입고(예)" },
+    { value: "completed", label: "입고(완)" }
+  ];
+}
+
+var today = new Date();
+var view = { year: today.getFullYear(), month: today.getMonth() };
+var events = [];
+var holidays = {};
+var selectedDate = null;
+
+var monthLabel = document.getElementById("month-label");
+var weekdayRow = document.getElementById("weekday-row");
+var grid = document.getElementById("grid");
+var panel = document.getElementById("panel");
+var toastRoot = document.getElementById("toast-root");
+
+["일","월","화","수","목","금","토"].forEach(function(d, i){
+  var el = document.createElement("div");
+  el.textContent = d;
+  if (i === 0) el.className = "sun";
+  if (i === 6) el.className = "sat";
+  weekdayRow.appendChild(el);
+});
+
+function fmt(y,m,d){ return y + "-" + String(m+1).padStart(2,"0") + "-" + String(d).padStart(2,"0"); }
+function fmtDateKorean(dateStr){
+  var d = new Date(dateStr + "T00:00:00");
+  var wd = ["일","월","화","수","목","금","토"][d.getDay()];
+  return (d.getMonth()+1) + "월 " + d.getDate() + "일 (" + wd + ")";
+}
+function showToast(msg){
+  toastRoot.innerHTML = "";
+  var t = document.createElement("div"); t.className = "toast"; t.textContent = msg;
+  toastRoot.appendChild(t);
+  setTimeout(function(){ toastRoot.innerHTML = ""; }, 2500);
+}
+function stageLabel(v, cat){
+  var s = getStages(cat).find(function(s){ return s.value === v; });
+  return s ? s.label : v;
+}
+function apiGet(action, extraParams){
+  var url = API_URL + "?action=" + action;
+  if (extraParams) Object.keys(extraParams).forEach(function(k){ url += "&" + k + "=" + encodeURIComponent(extraParams[k]); });
+  return fetch(url).then(function(r){ return r.json(); });
+}
+function apiPost(body){
+  return fetch(API_URL, { method: "POST", body: JSON.stringify(body) }).then(function(r){ return r.json(); });
+}
+function loadEvents(){
+  return apiGet("events").then(function(data){ events = data.events || []; }).catch(function(err){
+    showToast("일정을 불러오지 못했습니다. API 주소를 확인해주세요."); console.error(err);
+  });
+}
+function loadHolidays(year, month){
+  return apiGet("holidays", { year: year, month: month + 1 }).then(function(data){
+    (data.holidays || []).forEach(function(h){ holidays[h.date] = h.name; });
+  }).catch(function(){});
+}
+function buildCell(dateStr, dayLabel, isOutside){
+  var cell = document.createElement("div");
+  cell.className = "cell";
+  if (isOutside){ cell.className += " outside"; return cell; }
+  var isToday = dateStr === fmt(today.getFullYear(), today.getMonth(), today.getDate());
+  var d = new Date(dateStr + "T00:00:00");
+  var dow = d.getDay();
+  var isHoliday = !!holidays[dateStr];
+  if (isToday) cell.className += " today";
+  if (selectedDate === dateStr) cell.className += " selected";
+  var num = document.createElement("div");
+  num.textContent = dayLabel;
+  num.className = "daynum" + (isToday ? " today" : (dow===0 || isHoliday ? " sun" : (dow===6 ? " sat" : "")));
+  cell.appendChild(num);
+  if (isHoliday){
+    var hname = document.createElement("div"); hname.className = "holiday-name"; hname.textContent = holidays[dateStr];
+    cell.appendChild(hname);
+  }
+  var dayEvents = events.filter(function(e){ return e.date === dateStr; });
+  dayEvents.forEach(function(ev){
+    var c = CATS[ev.category] || CATS.other;
+    var card = document.createElement("div"); card.className = "event-card"; card.style.background = c.bg;
+    if (ev.category === "production" || ev.category === "shoot"){
+      var textCol = document.createElement("div"); textCol.className = "event-text";
+      var line1 = document.createElement("div"); line1.className = "event-line1"; line1.style.color = c.text;
+      line1.textContent = stageLabel(ev.stage, ev.category) + " · " + (ev.company || "") + " · " + (ev.item || "");
+      textCol.appendChild(line1); card.appendChild(textCol);
+    } else {
+      var txt = document.createElement("div"); txt.className = "event-title"; txt.style.color = c.text;
+      txt.textContent = ev.item || ""; card.appendChild(txt);
+    }
+    cell.appendChild(card);
+  });
+  cell.addEventListener("click", function(){ selectedDate = dateStr; render(); renderPanelList(dateStr); });
+  return cell;
+}
+function render(){
+  monthLabel.textContent = view.year + "년 " + (view.month+1) + "월";
+  grid.innerHTML = "";
+  var firstDay = new Date(view.year, view.month, 1).getDay();
+  var daysInMonth = new Date(view.year, view.month+1, 0).getDate();
+  var totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+  for (var i=0; i<totalCells; i++){
+    var dayNum = i - firstDay + 1;
+    if (dayNum < 1 || dayNum > daysInMonth){ grid.appendChild(buildCell(null, null, true)); continue; }
+    grid.appendChild(buildCell(fmt(view.year, view.month, dayNum), dayNum, false));
+  }
+}
+function refreshAll(){
+  grid.innerHTML = '<div class="loading-text"><span class="spinner-inline"></span>일정을 불러오는 중...</div>';
+  Promise.all([loadEvents(), loadHolidays(view.year, view.month)]).then(function(){
+    render();
+    if (selectedDate) renderPanelList(selectedDate);
+  });
+}
+function renderPanelList(dateStr){
+  selectedDate = dateStr; panel.innerHTML = "";
+  var dateEl = document.createElement("div"); dateEl.className = "panel-date"; dateEl.textContent = fmtDateKorean(dateStr); panel.appendChild(dateEl);
+  var dayEvents = events.filter(function(e){ return e.date === dateStr; });
+  var subtitle = document.createElement("div"); subtitle.className = "panel-subtitle";
+  subtitle.textContent = dayEvents.length > 0 ? "일정 " + dayEvents.length + "건" : "등록된 일정이 없습니다"; panel.appendChild(subtitle);
+  var addBtn = document.createElement("button"); addBtn.className = "primary panel-add-btn"; addBtn.textContent = "+ 새 일정 추가";
+  addBtn.addEventListener("click", function(){ renderPanelForm(dateStr, null); }); panel.appendChild(addBtn);
+  dayEvents.forEach(function(ev){
+    var c = CATS[ev.category] || CATS.other;
+    var item = document.createElement("div"); item.className = "panel-list-item";
+    item.style.background = c.bg;
+    item.style.borderColor = c.color;
+    var catEl = document.createElement("div"); catEl.className = "panel-list-cat"; catEl.style.color = c.text;
+    catEl.textContent = c.label + (ev.category === "production" || ev.category === "shoot" ? " · " + stageLabel(ev.stage, ev.category) : "");
+    item.appendChild(catEl);
+    var mainEl = document.createElement("div"); mainEl.className = "panel-list-main";
+    mainEl.textContent = (ev.category === "production" || ev.category === "shoot") ? (ev.company || "") + " · " + (ev.item || "") : (ev.item || "");
+    item.appendChild(mainEl);
+    if (ev.category === "production" && ev.variants){
+      var parsedVariants = parseVariants(ev.variants).filter(function(v){ return v.color || v.size || v.qty || v.parentColor; });
+      var colorGroups = {};
+      var colorOrder = [];
+      var sizeOnlyLines = [];
+      parsedVariants.forEach(function(v){
+        if (v.type === "size"){
+          if (v.parentColor){
+            var key = v.parentColor;
+            if (!(key in colorGroups)){ colorGroups[key] = []; colorOrder.push(key); }
+            colorGroups[key].push([v.size, v.qty].filter(Boolean).join("-"));
+          } else {
+            sizeOnlyLines.push([v.size, v.qty].filter(Boolean).join("-"));
+          }
+        } else {
+          var key = v.color || "";
+          if (!(key in colorGroups)){ colorGroups[key] = []; colorOrder.push(key); }
+          colorGroups[key].push([v.size, v.qty].filter(Boolean).join("-"));
+        }
+      });
+      var variantLines = colorOrder.map(function(c){
+        var detail = colorGroups[c].join(", ");
+        return c ? (c + ": " + detail) : detail;
+      }).concat(sizeOnlyLines);
+
+      if (variantLines.length > 0){
+        var variantWrap = document.createElement("div");
+        variantWrap.className = "panel-list-variant-wrap";
+        variantLines.forEach(function(line){
+          var lineEl = document.createElement("div");
+          lineEl.className = "panel-list-variant";
+          lineEl.textContent = line;
+          variantWrap.appendChild(lineEl);
+        });
+        item.appendChild(variantWrap);
+      }
+    }
+    item.addEventListener("click", function(){ renderPanelForm(dateStr, ev); }); panel.appendChild(item);
+  });
+}
+function renderPanelForm(dateStr, ev){
+  var isEdit = !!ev, cat = isEdit ? ev.category : "production";
+  var variants = isEdit && ev.variants ? parseVariants(ev.variants) : [{type:"color",color:"",size:"",qty:""}];
+  panel.innerHTML = "";
+  var backBtn = document.createElement("button"); backBtn.className = "panel-back-btn"; backBtn.textContent = "← 목록으로";
+  backBtn.addEventListener("click", function(){ renderPanelList(dateStr); }); panel.appendChild(backBtn);
+  var title = document.createElement("h2"); title.className = "panel-title"; title.textContent = isEdit ? "일정 수정" : "일정 등록"; panel.appendChild(title);
+  var catRow = document.createElement("div"); catRow.className = "cat-row";
+  Object.keys(CATS).forEach(function(key){
+    var b = document.createElement("button"); b.className = "cat-btn"; b.textContent = CATS[key].label; b.dataset.cat = key;
+    function paint(){ var sel = key===cat; b.style.borderColor=sel?CATS[key].color:""; b.style.background=sel?CATS[key].bg:""; b.style.color=sel?CATS[key].text:""; }
+    paint();
+    b.addEventListener("click", function(){ cat=key; renderFormFields(); Array.prototype.forEach.call(catRow.children,function(btn){ var k=btn.dataset.cat; var sel=k===cat; btn.style.borderColor=sel?CATS[k].color:""; btn.style.background=sel?CATS[k].bg:""; btn.style.color=sel?CATS[k].text:""; }); });
+    catRow.appendChild(b);
+  }); panel.appendChild(catRow);
+  var dateLabel = document.createElement("div"); dateLabel.className = "field-label"; dateLabel.textContent = "날짜"; panel.appendChild(dateLabel);
+  var dateInput = document.createElement("input"); dateInput.type = "date"; dateInput.value = isEdit ? ev.date : dateStr; dateInput.style.marginBottom = "14px"; panel.appendChild(dateInput);
+  var formArea = document.createElement("div"); panel.appendChild(formArea);
+  var fields = {};
+  function field(labelText, key, val, isTextarea){
+    var wrap = document.createElement("div"); wrap.className = "field";
+    var lab = document.createElement("div"); lab.className = "field-label"; lab.textContent = labelText; wrap.appendChild(lab);
+    var inp = document.createElement(isTextarea ? "textarea" : "input");
+    if (isTextarea) inp.rows = 3; else inp.type = "text"; inp.value = val || ""; wrap.appendChild(inp);
+    fields[key] = inp; formArea.appendChild(wrap);
+  }
+  function stageSelect(val){
+    var wrap = document.createElement("div"); wrap.className = "field";
+    var lab = document.createElement("div"); lab.className = "field-label"; lab.textContent = "단계"; wrap.appendChild(lab);
+    var sel = document.createElement("select");
+    getStages(cat).forEach(function(s){ var o=document.createElement("option"); o.value=s.value; o.textContent=s.label; if(s.value===val) o.selected=true; sel.appendChild(o); });
+    wrap.appendChild(sel); fields["stage"]=sel; formArea.appendChild(wrap);
+  }
+  var variantListEl;
+  function renderVariantRows(){
+    variantListEl.innerHTML = "";
+    var colorOptions = variants.filter(function(v){ return v.type !== "size" && v.color; }).map(function(v){ return v.color; });
+    var uniqueColors = colorOptions.filter(function(c, i){ return colorOptions.indexOf(c) === i; });
+
+    variants.forEach(function(v, idx){
+      var row = document.createElement("div");
+      row.className = "variant-row";
+      if (v.type === "size"){
+        var sel = document.createElement("select");
+        sel.style.fontSize = "12px";
+        sel.style.padding = "6px 4px";
+        var placeholderOpt = document.createElement("option");
+        placeholderOpt.value = ""; placeholderOpt.textContent = "컬러 선택";
+        sel.appendChild(placeholderOpt);
+        uniqueColors.forEach(function(c){
+          var o = document.createElement("option");
+          o.value = c; o.textContent = c;
+          if (v.parentColor === c) o.selected = true;
+          sel.appendChild(o);
+        });
+        sel.addEventListener("change", function(){ v.parentColor = sel.value; });
+        row.appendChild(sel);
+        ["size","qty"].forEach(function(k, ci){
+          var inp = document.createElement("input"); inp.type="text"; inp.placeholder=["사이즈","수량"][ci]; inp.value=v[k]||"";
+          inp.addEventListener("input", function(){ v[k]=inp.value; }); row.appendChild(inp);
+        });
+      } else {
+        ["color","size","qty"].forEach(function(k, ci){
+          var inp = document.createElement("input"); inp.type="text"; inp.placeholder=["컬러","사이즈","수량"][ci]; inp.value=v[k]||"";
+          inp.addEventListener("input", function(){ v[k]=inp.value; });
+          if (k === "color") inp.addEventListener("blur", function(){ renderVariantRows(); });
+          row.appendChild(inp);
+        });
+      }
+      var rmBtn = document.createElement("button"); rmBtn.className="icon-btn"; rmBtn.textContent="✕"; rmBtn.disabled=variants.length===1;
+      rmBtn.addEventListener("click", function(){ if(variants.length===1) return; variants.splice(idx,1); renderVariantRows(); });
+      row.appendChild(rmBtn); variantListEl.appendChild(row);
+    });
+  }
+  function renderFormFields(){
+    formArea.innerHTML = ""; fields = {};
+    if (cat==="production"){
+      stageSelect(isEdit?ev.stage:getStages(cat)[0].value); field("업체명","company",isEdit?ev.company:""); field("상품명","item",isEdit?ev.item:"");
+      var vLabel=document.createElement("div"); vLabel.className="variant-row"; vLabel.style.marginBottom="4px";
+      ["컬러","사이즈","수량"].forEach(function(t){ var lab=document.createElement("div"); lab.className="field-label"; lab.style.margin="0"; lab.textContent=t; vLabel.appendChild(lab); });
+      vLabel.appendChild(document.createElement("div")); formArea.appendChild(vLabel);
+      variantListEl=document.createElement("div"); formArea.appendChild(variantListEl); renderVariantRows();
+      var addBtnRow=document.createElement("div"); addBtnRow.style.display="flex"; addBtnRow.style.gap="6px"; addBtnRow.style.marginTop="2px";
+      var addColorBtn=document.createElement("button"); addColorBtn.textContent="+ 컬러 추가";
+      addColorBtn.addEventListener("click",function(){ variants.push({type:"color",color:"",size:"",qty:""}); renderVariantRows(); }); addBtnRow.appendChild(addColorBtn);
+      var addSizeBtn=document.createElement("button"); addSizeBtn.textContent="+ 사이즈 추가";
+      addSizeBtn.addEventListener("click",function(){ variants.push({type:"size",size:"",qty:""}); renderVariantRows(); }); addBtnRow.appendChild(addSizeBtn);
+      formArea.appendChild(addBtnRow);
+    } else if (cat==="shoot"){
+      stageSelect(isEdit?ev.stage:getStages(cat)[0].value); field("업체명","company",isEdit?ev.company:""); field("상품명","item",isEdit?ev.item:"");
+    } else if (cat==="leave"){ field("성함","item",isEdit?ev.item:""); field("내용","description",isEdit?ev.description:"",true);
+    } else { field("제목","item",isEdit?ev.item:""); field("내용","description",isEdit?ev.description:"",true); }
+  }
+  renderFormFields();
+  var btnRow=document.createElement("div"); btnRow.className="btn-row";
+  var leftBtns=document.createElement("div");
+  if (isEdit){
+    var delBtn=document.createElement("button"); delBtn.className="danger"; delBtn.textContent="삭제";
+    delBtn.addEventListener("click",function(){ delBtn.disabled=true; delBtn.textContent="삭제 중...";
+      apiPost({action:"delete",id:ev.id}).then(function(){ showToast("삭제되었습니다."); refreshAllAndShowList(dateStr); }); });
+    leftBtns.appendChild(delBtn);
+  }
+  btnRow.appendChild(leftBtns);
+  var rightBtns=document.createElement("div"); rightBtns.className="btn-row-right";
+  var cancelBtn=document.createElement("button"); cancelBtn.textContent="취소";
+  cancelBtn.addEventListener("click",function(){ renderPanelList(dateStr); }); rightBtns.appendChild(cancelBtn);
+  var saveBtn=document.createElement("button"); saveBtn.className="primary"; saveBtn.textContent="저장";
+  saveBtn.addEventListener("click",function(){
+    saveBtn.disabled=true; saveBtn.textContent="저장 중...";
+    var payload={id:isEdit?ev.id:undefined,date:dateInput.value,category:cat,stage:fields.stage?fields.stage.value:"",company:fields.company?fields.company.value:"",item:fields.item?fields.item.value:"",imageUrl:isEdit?(ev.imageUrl||""):"",variants:cat==="production"?stringifyVariants(variants):"",description:fields.description?fields.description.value:""};
+    apiPost({action:isEdit?"update":"create",data:payload}).then(function(res){
+      if(res.success===false){ showToast(res.error||"저장 중 문제가 발생했습니다."); saveBtn.disabled=false; saveBtn.textContent="저장"; return; }
+      showToast("저장되었습니다."); refreshAllAndShowList(dateInput.value);
+    }).catch(function(){ showToast("저장 중 오류가 발생했습니다."); saveBtn.disabled=false; saveBtn.textContent="저장"; });
+  });
+  rightBtns.appendChild(saveBtn); btnRow.appendChild(rightBtns); panel.appendChild(btnRow);
+}
+function refreshAllAndShowList(dateStr){
+  Promise.all([loadEvents(), loadHolidays(view.year, view.month)]).then(function(){ render(); renderPanelList(dateStr); });
+}
+function parseVariants(str){
+  if (!str) return [{type:"color",color:"",size:"",qty:""}];
+  return str.split(";").map(function(part){
+    part = part.trim();
+    if (part.indexOf("*") === 0){
+      var bits = part.substring(1).split("/").map(function(s){return s.trim();});
+      return {type:"size", parentColor: bits[0]||"", size: bits[1]||"", qty: bits[2]||""};
+    }
+    var bits = part.split("/").map(function(s){return s.trim();});
+    return {type:"color", color:bits[0]||"", size:bits[1]||"", qty:bits[2]||""};
+  });
+}
+function stringifyVariants(arr){
+  return arr.filter(function(v){return v.color||v.size||v.qty;}).map(function(v){
+    if (v.type === "size"){
+      return "*" + [v.parentColor||"", v.size, v.qty].join("/");
+    }
+    return [v.color,v.size,v.qty].join("/");
+  }).join("; ");
+}
+document.getElementById("prev-btn").addEventListener("click",function(){ view.month--; if(view.month<0){view.month=11;view.year--;} refreshAll(); });
+document.getElementById("next-btn").addEventListener("click",function(){ view.month++; if(view.month>11){view.month=0;view.year++;} refreshAll(); });
+document.getElementById("today-btn").addEventListener("click",function(){ view.year=today.getFullYear(); view.month=today.getMonth(); refreshAll(); });
+document.getElementById("refresh-btn").addEventListener("click",refreshAll);
+refreshAll();
+</script>
+</body>
+</html>
