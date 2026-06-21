@@ -108,7 +108,7 @@
   .cell.outside { background: var(--color-bg-secondary); cursor: default; }
   .cell.today { background: var(--color-bg); box-shadow: inset 0 0 0 2px #1a1a18; }
   .cell.selected { box-shadow: inset 0 0 0 2px #6ab04c; }
-  .daynum { font-size: 15px; margin-bottom: 0; }
+  .daynum { font-size: 15px; margin-bottom: 6px; }
   .daynum.today { color: var(--color-text); font-weight: 600; }
   .daynum.sun { color: var(--sun-color); }
   .daynum.sat { color: var(--sat-color); }
@@ -196,6 +196,7 @@
           <button id="today-btn">오늘</button>
           <button id="next-btn">&#9656;</button>
           <button id="refresh-btn">새로고침</button>
+          <button id="recurring-btn">반복일정 생성</button>
         </div>
       </div>
     </div>
@@ -230,8 +231,8 @@ var CATS = {
 function getStages(cat){
   return [
     { value: "instruct", label: "투입일" },
-    { value: "expected", label: "입고(예)" },
-    { value: "completed", label: "입고(완)" }
+    { value: "expected", label: "입고 예정" },
+    { value: "completed", label: "입고 완료" }
   ];
 }
 
@@ -279,30 +280,7 @@ function apiGet(action, extraParams){
 function apiPost(body){
   return fetch(API_URL, { method: "POST", body: JSON.stringify(body) }).then(function(r){ return r.json(); });
 }
-/* ---- 프리뷰용 더미 이벤트 ---- */
-var PREVIEW_EVENTS = (function(){
-  var t = new Date();
-  var y = t.getFullYear(), m = t.getMonth();
-  function d(day, mo){ return y + "-" + String((mo||m)+1).padStart(2,"0") + "-" + String(day).padStart(2,"0"); }
-  return [
-    { id:"p1", date: d(3),  category:"production", stage:"instruct",  company:"ABC패션", item:"린넨 재킷",    variants:"베이지/M/30; 베이지/L/20; 블랙/M/25" },
-    { id:"p2", date: d(8),  category:"production", stage:"expected",  company:"XYZ어패럴", item:"슬랙스",      variants:"네이비/S/15; 네이비/M/20; 그레이/M/18" },
-    { id:"p3", date: d(12), category:"shoot",      stage:"instruct",  company:"스타일컴", item:"플로럴 드레스", variants:"" },
-    { id:"p4", date: d(15), category:"leave",      stage:"",          company:"",          item:"김지수",       variants:"", description:"연차" },
-    { id:"p5", date: d(17), category:"team",       stage:"",          company:"",          item:"시즌 킥오프 미팅", variants:"" },
-    { id:"p6", date: d(22), category:"production", stage:"completed", company:"ABC패션", item:"린넨 재킷",    variants:"베이지/M/30/28; 베이지/L/20/19; 블랙/M/25/24" },
-    { id:"p7", date: d(24), category:"other",      stage:"",          company:"",          item:"MD팀 트렌드 공유", variants:"" },
-    { id:"p8", date: d(28), category:"shoot",      stage:"expected",  company:"스타일컴", item:"플로럴 드레스", variants:"" },
-  ];
-}());
-
-var previewMode = false;
-
 function loadEvents(){
-  if (previewMode){
-    events = PREVIEW_EVENTS;
-    return Promise.resolve();
-  }
   return apiGet("events").then(function(data){ events = data.events || []; }).catch(function(err){
     showToast("일정을 불러오지 못했습니다. API 주소를 확인해주세요."); console.error(err);
   });
@@ -312,43 +290,6 @@ function loadHolidays(year, month){
     (data.holidays || []).forEach(function(h){ holidays[h.date] = h.name; });
   }).catch(function(){});
 }
-
-/* ---------- 반복 일정 (로컬 렌더용) ---------- */
-function getRecurringEvents(dateStr) {
-  var d = new Date(dateStr + "T00:00:00");
-  var dow = d.getDay();
-  var year = d.getFullYear();
-  var month = d.getMonth();
-  var day = d.getDate();
-  var recurring = [];
-
-  var daysInMonth = new Date(year, month + 1, 0).getDate();
-  var lastThursday = 0, lastFriday = 0;
-  for (var dd = daysInMonth; dd >= 1; dd--) {
-    var wd = new Date(year, month, dd).getDay();
-    if (lastThursday === 0 && wd === 4) lastThursday = dd;
-    if (lastFriday === 0 && wd === 5) lastFriday = dd;
-    if (lastThursday && lastFriday) break;
-  }
-
-  if (dow === 4) {
-    var label = (day === lastThursday) ? "브이팀회의&지식DB" : "브이팀회의";
-    // 같은 날 DB에 이미 동일 item이 있으면 skip
-    var alreadyInDB = events.some(function(e){ return e.date === dateStr && e.item === label; });
-    if (!alreadyInDB) {
-      recurring.push({ category: "team", item: label, date: dateStr, _virtual: true });
-    }
-  }
-  if (dow === 5 && day === lastFriday) {
-    var label2 = "오픈한 북클럽";
-    var alreadyInDB2 = events.some(function(e){ return e.date === dateStr && e.item === label2; });
-    if (!alreadyInDB2) {
-      recurring.push({ category: "other", item: label2, date: dateStr, _virtual: true });
-    }
-  }
-  return recurring;
-}
-
 function buildCell(dateStr, dayLabel, isOutside){
   var cell = document.createElement("div");
   cell.className = "cell";
@@ -359,34 +300,14 @@ function buildCell(dateStr, dayLabel, isOutside){
   var isHoliday = !!holidays[dateStr];
   if (isToday) cell.className += " today";
   if (selectedDate === dateStr) cell.className += " selected";
-
-  // 날짜 헤더 행: 숫자 + 반복일정 태그 나란히
-  var headerRow = document.createElement("div");
-  headerRow.style.cssText = "display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:6px;";
-
   var num = document.createElement("div");
   num.textContent = dayLabel;
   num.className = "daynum" + (isToday ? " today" : (dow===0 || isHoliday ? " sun" : (dow===6 ? " sat" : "")));
-  headerRow.appendChild(num);
-
+  cell.appendChild(num);
   if (isHoliday){
-    var hname = document.createElement("div"); hname.className = "holiday-name"; hname.style.margin="0"; hname.textContent = holidays[dateStr];
-    headerRow.appendChild(hname);
+    var hname = document.createElement("div"); hname.className = "holiday-name"; hname.textContent = holidays[dateStr];
+    cell.appendChild(hname);
   }
-
-  // 반복 일정 태그 (DB에 없는 경우에만 가상으로 표시)
-  var recurringEvs = getRecurringEvents(dateStr);
-  recurringEvs.forEach(function(ev){
-    var c = CATS[ev.category] || CATS.other;
-    var tag = document.createElement("span");
-    tag.textContent = ev.item;
-    tag.style.cssText = "font-size:9px;font-weight:500;padding:2px 6px;border-radius:4px;background:" + c.bg + ";color:" + c.text + ";white-space:nowrap;cursor:pointer;";
-    tag.addEventListener("click", function(e){ e.stopPropagation(); selectedDate = dateStr; render(); renderPanelList(dateStr); });
-    headerRow.appendChild(tag);
-  });
-
-  cell.appendChild(headerRow);
-
   var dayEvents = events.filter(function(e){ return e.date === dateStr; });
   dayEvents.forEach(function(ev){
     var c = CATS[ev.category] || CATS.other;
@@ -427,14 +348,12 @@ function refreshAll(){
 function renderPanelList(dateStr){
   selectedDate = dateStr; panel.innerHTML = "";
   var dateEl = document.createElement("div"); dateEl.className = "panel-date"; dateEl.textContent = fmtDateKorean(dateStr); panel.appendChild(dateEl);
-  var dbEvents = events.filter(function(e){ return e.date === dateStr; });
-  var virtualEvents = getRecurringEvents(dateStr);
-  var allEvents = dbEvents.concat(virtualEvents);
+  var dayEvents = events.filter(function(e){ return e.date === dateStr; });
   var subtitle = document.createElement("div"); subtitle.className = "panel-subtitle";
-  subtitle.textContent = allEvents.length > 0 ? "일정 " + allEvents.length + "건" : "등록된 일정이 없습니다"; panel.appendChild(subtitle);
+  subtitle.textContent = dayEvents.length > 0 ? "일정 " + dayEvents.length + "건" : "등록된 일정이 없습니다"; panel.appendChild(subtitle);
   var addBtn = document.createElement("button"); addBtn.className = "primary panel-add-btn"; addBtn.textContent = "+ 새 일정 추가";
   addBtn.addEventListener("click", function(){ renderPanelForm(dateStr, null); }); panel.appendChild(addBtn);
-  allEvents.forEach(function(ev){
+  dayEvents.forEach(function(ev){
     var c = CATS[ev.category] || CATS.other;
     var item = document.createElement("div"); item.className = "panel-list-item";
     item.style.background = c.bg;
@@ -465,24 +384,41 @@ function renderPanelList(dateStr){
           colorGroups[key].push({ size: v.size, qty: v.qty, cutQty: v.cutQty });
         }
       });
+
       var hasAnyRows = colorOrder.length > 0 || sizeOnlyRows.length > 0;
       if (hasAnyRows){
         var showQty4 = ev.stage !== "instruct";
         var qty4Label = ev.stage === "completed" ? "입고수량" : "재단수량";
-        var table = document.createElement("table"); table.className = "panel-variant-table";
-        var thead = document.createElement("thead"); var trHead = document.createElement("tr");
+        var table = document.createElement("table");
+        table.className = "panel-variant-table";
+
+        var thead = document.createElement("thead");
+        var trHead = document.createElement("tr");
         var headerCols = showQty4 ? ["컬러","사이즈","수량",qty4Label] : ["컬러","사이즈","수량"];
-        headerCols.forEach(function(h){ var th = document.createElement("th"); th.textContent = h; trHead.appendChild(th); });
-        thead.appendChild(trHead); table.appendChild(thead);
+        headerCols.forEach(function(h){
+          var th = document.createElement("th"); th.textContent = h; trHead.appendChild(th);
+        });
+        thead.appendChild(trHead);
+        table.appendChild(thead);
+
         var tbody = document.createElement("tbody");
+
         colorOrder.forEach(function(c){
           var rows = colorGroups[c];
           rows.forEach(function(r, ri){
             var tr = document.createElement("tr");
-            if (ri === 0){ var tdColor = document.createElement("td"); tdColor.className = "pvt-color"; tdColor.textContent = c || "-"; tdColor.rowSpan = rows.length; tr.appendChild(tdColor); }
+            if (ri === 0){
+              var tdColor = document.createElement("td");
+              tdColor.className = "pvt-color";
+              tdColor.textContent = c || "-";
+              tdColor.rowSpan = rows.length;
+              tr.appendChild(tdColor);
+            }
             var tdSize = document.createElement("td"); tdSize.textContent = r.size || "-"; tr.appendChild(tdSize);
             var tdQty = document.createElement("td"); tdQty.textContent = r.qty || "-"; tr.appendChild(tdQty);
-            if (showQty4){ var tdCutQty = document.createElement("td"); tdCutQty.textContent = r.cutQty || "-"; tr.appendChild(tdCutQty); }
+            if (showQty4){
+              var tdCutQty = document.createElement("td"); tdCutQty.textContent = r.cutQty || "-"; tr.appendChild(tdCutQty);
+            }
             tbody.appendChild(tr);
           });
         });
@@ -491,20 +427,20 @@ function renderPanelList(dateStr){
           var tdColor = document.createElement("td"); tdColor.className = "pvt-color"; tdColor.textContent = "-"; tr.appendChild(tdColor);
           var tdSize = document.createElement("td"); tdSize.textContent = r.size || "-"; tr.appendChild(tdSize);
           var tdQty = document.createElement("td"); tdQty.textContent = r.qty || "-"; tr.appendChild(tdQty);
-          if (showQty4){ var tdCutQty = document.createElement("td"); tdCutQty.textContent = r.cutQty || "-"; tr.appendChild(tdCutQty); }
+          if (showQty4){
+            var tdCutQty = document.createElement("td"); tdCutQty.textContent = r.cutQty || "-"; tr.appendChild(tdCutQty);
+          }
           tbody.appendChild(tr);
         });
+
         table.appendChild(tbody);
-        var variantWrap = document.createElement("div"); variantWrap.className = "panel-list-variant-wrap"; variantWrap.appendChild(table); item.appendChild(variantWrap);
+        var variantWrap = document.createElement("div");
+        variantWrap.className = "panel-list-variant-wrap";
+        variantWrap.appendChild(table);
+        item.appendChild(variantWrap);
       }
     }
-    // 가상 반복일정은 클릭 시 폼 열기 (신규 등록으로)
-    if (ev._virtual) {
-      item.addEventListener("click", function(){ renderPanelForm(dateStr, null); });
-    } else {
-      item.addEventListener("click", function(){ renderPanelForm(dateStr, ev); });
-    }
-    panel.appendChild(item);
+    item.addEventListener("click", function(){ renderPanelForm(dateStr, ev); }); panel.appendChild(item);
   });
 }
 function renderPanelForm(dateStr, ev){
@@ -548,29 +484,49 @@ function renderPanelForm(dateStr, ev){
     var uniqueColors = colorOptions.filter(function(c, i){ return colorOptions.indexOf(c) === i; });
     var currentStageVal = fields.stage ? fields.stage.value : "";
     var qty4Label = currentStageVal === "completed" ? "입고수량" : "재단수량";
+
     variants.forEach(function(v, idx){
-      var row = document.createElement("div"); row.className = "variant-row";
+      var row = document.createElement("div");
+      row.className = "variant-row";
       var showQty4 = currentStageVal !== "instruct";
       row.style.gridTemplateColumns = showQty4 ? "1fr 1fr 0.8fr 0.8fr 26px" : "1fr 1fr 0.9fr 26px";
       if (v.type === "size"){
-        var sel = document.createElement("select"); sel.style.fontSize="12px"; sel.style.padding="6px 4px";
-        var placeholderOpt = document.createElement("option"); placeholderOpt.value=""; placeholderOpt.textContent="컬러 선택"; sel.appendChild(placeholderOpt);
-        uniqueColors.forEach(function(c){ var o=document.createElement("option"); o.value=c; o.textContent=c; if(v.parentColor===c) o.selected=true; sel.appendChild(o); });
-        sel.addEventListener("change", function(){ v.parentColor=sel.value; }); row.appendChild(sel);
+        var sel = document.createElement("select");
+        sel.style.fontSize = "12px";
+        sel.style.padding = "6px 4px";
+        var placeholderOpt = document.createElement("option");
+        placeholderOpt.value = ""; placeholderOpt.textContent = "컬러 선택";
+        sel.appendChild(placeholderOpt);
+        uniqueColors.forEach(function(c){
+          var o = document.createElement("option");
+          o.value = c; o.textContent = c;
+          if (v.parentColor === c) o.selected = true;
+          sel.appendChild(o);
+        });
+        sel.addEventListener("change", function(){ v.parentColor = sel.value; });
+        row.appendChild(sel);
         var sizeKeys = showQty4 ? ["size","qty","cutQty"] : ["size","qty"];
         var sizePlaceholders = showQty4 ? ["사이즈","수량",qty4Label] : ["사이즈","수량"];
-        sizeKeys.forEach(function(k, ci){ var inp=document.createElement("input"); inp.type="text"; inp.placeholder=sizePlaceholders[ci]; inp.value=v[k]||""; inp.addEventListener("input",function(){ v[k]=inp.value; }); row.appendChild(inp); });
+        sizeKeys.forEach(function(k, ci){
+          var inp = document.createElement("input"); inp.type="text"; inp.placeholder=sizePlaceholders[ci]; inp.value=v[k]||"";
+          inp.addEventListener("input", function(){ v[k]=inp.value; }); row.appendChild(inp);
+        });
       } else {
         var colorKeys = showQty4 ? ["color","size","qty","cutQty"] : ["color","size","qty"];
         var colorPlaceholders = showQty4 ? ["컬러","사이즈","수량",qty4Label] : ["컬러","사이즈","수량"];
-        colorKeys.forEach(function(k, ci){ var inp=document.createElement("input"); inp.type="text"; inp.placeholder=colorPlaceholders[ci]; inp.value=v[k]||""; inp.addEventListener("input",function(){ v[k]=inp.value; }); if(k==="color") inp.addEventListener("blur",function(){ renderVariantRows(); }); row.appendChild(inp); });
+        colorKeys.forEach(function(k, ci){
+          var inp = document.createElement("input"); inp.type="text"; inp.placeholder=colorPlaceholders[ci]; inp.value=v[k]||"";
+          inp.addEventListener("input", function(){ v[k]=inp.value; });
+          if (k === "color") inp.addEventListener("blur", function(){ renderVariantRows(); });
+          row.appendChild(inp);
+        });
       }
-      var rmBtn=document.createElement("button"); rmBtn.className="icon-btn"; rmBtn.textContent="✕"; rmBtn.disabled=variants.length===1;
-      rmBtn.addEventListener("click",function(){ if(variants.length===1) return; variants.splice(idx,1); renderVariantRows(); });
+      var rmBtn = document.createElement("button"); rmBtn.className="icon-btn"; rmBtn.textContent="✕"; rmBtn.disabled=variants.length===1;
+      rmBtn.addEventListener("click", function(){ if(variants.length===1) return; variants.splice(idx,1); renderVariantRows(); });
       row.appendChild(rmBtn); variantListEl.appendChild(row);
     });
   }
-  var recordPicked = false;
+  var recordPicked = false; // 입고(예)/입고(완)에서 기록을 선택해 폼이 채워졌는지 여부
   var pickedCompany = "", pickedItem = "";
   function renderProductionFields(){
     field("업체명","company", recordPicked ? pickedCompany : (isEdit?ev.company:""));
@@ -580,7 +536,7 @@ function renderPanelForm(dateStr, ev){
     var showQty4Header = currentStageForLabel !== "instruct";
     vLabel.style.gridTemplateColumns = showQty4Header ? "1fr 1fr 0.8fr 0.8fr 26px" : "1fr 1fr 0.9fr 26px";
     vLabel.style.marginBottom="4px";
-    var headerLabels = showQty4Header ? ["컬러","사이즈","수량", currentStageForLabel==="completed" ? "입고수량" : "재단수량"] : ["컬러","사이즈","수량"];
+    var headerLabels = showQty4Header ? ["컬러","사이즈","수량", currentStageForLabel === "completed" ? "입고수량" : "재단수량"] : ["컬러","사이즈","수량"];
     headerLabels.forEach(function(t){ var lab=document.createElement("div"); lab.className="field-label"; lab.style.margin="0"; lab.textContent=t; vLabel.appendChild(lab); });
     vLabel.appendChild(document.createElement("div")); formArea.appendChild(vLabel);
     variantListEl=document.createElement("div"); formArea.appendChild(variantListEl); renderVariantRows();
@@ -592,29 +548,52 @@ function renderPanelForm(dateStr, ev){
     formArea.appendChild(addBtnRow);
   }
   function renderInstructPicker(currentStageVal){
-    var hint=document.createElement("div"); hint.className="field-label"; hint.style.marginBottom="8px";
-    hint.textContent="투입일로 등록된 기록을 선택하면 업체명·상품명·옵션이 채워집니다."; formArea.appendChild(hint);
-    var records=findProductionInstructRecords();
-    if (records.length===0){
-      var emptyMsg=document.createElement("div"); emptyMsg.className="panel-subtitle"; emptyMsg.textContent="등록된 투입일 기록이 없습니다."; formArea.appendChild(emptyMsg);
+    var hint = document.createElement("div");
+    hint.className = "field-label";
+    hint.style.marginBottom = "8px";
+    hint.textContent = "투입일로 등록된 기록을 선택하면 업체명·상품명·옵션이 채워집니다.";
+    formArea.appendChild(hint);
+
+    var records = findProductionInstructRecords();
+    if (records.length === 0){
+      var emptyMsg = document.createElement("div");
+      emptyMsg.className = "panel-subtitle";
+      emptyMsg.textContent = "등록된 투입일 기록이 없습니다.";
+      formArea.appendChild(emptyMsg);
     } else {
       records.forEach(function(rec){
-        var recItem=document.createElement("div"); recItem.className="panel-list-item";
-        var recDate=document.createElement("div"); recDate.className="panel-list-cat"; recDate.textContent=fmtDateKorean(rec.date); recItem.appendChild(recDate);
-        var recMain=document.createElement("div"); recMain.className="panel-list-main"; recMain.textContent=(rec.company||"")+" · "+(rec.item||""); recItem.appendChild(recMain);
-        recItem.addEventListener("click",function(){ pickedCompany=rec.company||""; pickedItem=rec.item||""; variants=rec.variants?parseVariants(rec.variants):[{type:"color",color:"",size:"",qty:"",cutQty:""}]; recordPicked=true; renderFormFields(currentStageVal); });
+        var recItem = document.createElement("div");
+        recItem.className = "panel-list-item";
+        var recDate = document.createElement("div");
+        recDate.className = "panel-list-cat";
+        recDate.textContent = fmtDateKorean(rec.date);
+        recItem.appendChild(recDate);
+        var recMain = document.createElement("div");
+        recMain.className = "panel-list-main";
+        recMain.textContent = (rec.company || "") + " · " + (rec.item || "");
+        recItem.appendChild(recMain);
+        recItem.addEventListener("click", function(){
+          pickedCompany = rec.company || "";
+          pickedItem = rec.item || "";
+          variants = rec.variants ? parseVariants(rec.variants) : [{type:"color",color:"",size:"",qty:"",cutQty:""}];
+          recordPicked = true;
+          renderFormFields(currentStageVal);
+        });
         formArea.appendChild(recItem);
       });
     }
   }
   function renderFormFields(forcedStage){
-    formArea.innerHTML=""; fields={};
+    formArea.innerHTML = ""; fields = {};
     if (cat==="production"){
-      var initialStage=forcedStage!==undefined?forcedStage:(isEdit?ev.stage:getStages(cat)[0].value);
+      var initialStage = forcedStage !== undefined ? forcedStage : (isEdit?ev.stage:getStages(cat)[0].value);
       stageSelect(initialStage);
-      var currentStage=fields.stage?fields.stage.value:initialStage;
-      if (currentStage!=="instruct"&&!isEdit&&!recordPicked){ renderInstructPicker(currentStage); }
-      else { renderProductionFields(); }
+      var currentStage = fields.stage ? fields.stage.value : initialStage;
+      if (currentStage !== "instruct" && !isEdit && !recordPicked){
+        renderInstructPicker(currentStage);
+      } else {
+        renderProductionFields();
+      }
     } else if (cat==="shoot"){
       stageSelect(isEdit?ev.stage:getStages(cat)[0].value); field("업체명","company",isEdit?ev.company:""); field("상품명","item",isEdit?ev.item:"");
     } else if (cat==="leave"){ field("성함","item",isEdit?ev.item:""); field("내용","description",isEdit?ev.description:"",true);
@@ -650,34 +629,119 @@ function refreshAllAndShowList(dateStr){
 function parseVariants(str){
   if (!str) return [{type:"color",color:"",size:"",qty:"",cutQty:""}];
   return str.split(";").map(function(part){
-    part=part.trim();
-    if (part.indexOf("*")===0){ var bits=part.substring(1).split("/").map(function(s){return s.trim();}); return {type:"size",parentColor:bits[0]||"",size:bits[1]||"",qty:bits[2]||"",cutQty:bits[3]||""}; }
-    var bits=part.split("/").map(function(s){return s.trim();}); return {type:"color",color:bits[0]||"",size:bits[1]||"",qty:bits[2]||"",cutQty:bits[3]||""};
+    part = part.trim();
+    if (part.indexOf("*") === 0){
+      var bits = part.substring(1).split("/").map(function(s){return s.trim();});
+      return {type:"size", parentColor: bits[0]||"", size: bits[1]||"", qty: bits[2]||"", cutQty: bits[3]||""};
+    }
+    var bits = part.split("/").map(function(s){return s.trim();});
+    return {type:"color", color:bits[0]||"", size:bits[1]||"", qty:bits[2]||"", cutQty:bits[3]||""};
   });
 }
 function stringifyVariants(arr){
   return arr.filter(function(v){return v.color||v.size||v.qty||v.cutQty;}).map(function(v){
-    if (v.type==="size"){ return "*"+[v.parentColor||"",v.size,v.qty,v.cutQty||""].join("/"); }
+    if (v.type === "size"){
+      return "*" + [v.parentColor||"", v.size, v.qty, v.cutQty||""].join("/");
+    }
     return [v.color,v.size,v.qty,v.cutQty||""].join("/");
   }).join("; ");
 }
 function findProductionInstructRecords(){
-  return events.filter(function(e){ return e.category==="production"&&e.stage==="instruct"; }).slice().sort(function(a,b){ return a.date<b.date?1:-1; });
+  return events.filter(function(e){ return e.category === "production" && e.stage === "instruct"; })
+    .slice()
+    .sort(function(a,b){ return a.date < b.date ? 1 : -1; });
 }
 document.getElementById("prev-btn").addEventListener("click",function(){ view.month--; if(view.month<0){view.month=11;view.year--;} refreshAll(); });
 document.getElementById("next-btn").addEventListener("click",function(){ view.month++; if(view.month>11){view.month=0;view.year++;} refreshAll(); });
 document.getElementById("today-btn").addEventListener("click",function(){ view.year=today.getFullYear(); view.month=today.getMonth(); refreshAll(); });
 document.getElementById("refresh-btn").addEventListener("click",refreshAll);
 
-    thursdays.forEach(function(th,idx){
-      if (th<start||th>end) return;
-      var isLast=idx===thursdays.length-1;
-      result.push({date:fmt(th.getFullYear(),th.getMonth(),th.getDate()),category:"team",stage:"",company:"",item:isLast?"브이팀회의&지식DB":"브이팀회의",imageUrl:"",variants:"",description:""});
-    });
-    if (lastFriday&&lastFriday>=start&&lastFriday<=end){
-      result.push({date:fmt(lastFriday.getFullYear(),lastFriday.getMonth(),lastFriday.getDate()),category:"other",stage:"",company:"",item:"오픈한 북클럽",imageUrl:"",variants:"",description:""});
+document.getElementById("recurring-btn").addEventListener("click", function(){
+  var btn = document.getElementById("recurring-btn");
+  if (!confirm("향후 1년치 목요일(브이팀회의)·마지막주 금요일(오픈한 북클럽) 반복 일정을 생성합니다.\n이미 같은 날짜·제목의 일정이 있으면 건너뜁니다. 계속할까요?")) return;
+  btn.disabled = true;
+  btn.textContent = "생성 중...";
+
+  loadEvents().then(function(){
+    var toCreate = buildRecurringEventPayloads();
+    var existingKeys = {};
+    events.forEach(function(e){ existingKeys[e.date + "|" + e.item] = true; });
+    var filtered = toCreate.filter(function(p){ return !existingKeys[p.date + "|" + p.item]; });
+
+    if (filtered.length === 0){
+      showToast("추가할 새 반복 일정이 없습니다 (이미 모두 존재).");
+      btn.disabled = false;
+      btn.textContent = "반복일정 생성";
+      return;
     }
-    cursor.setMonth(cursor.getMonth()+1);
+
+    var done = 0;
+    function next(){
+      if (done >= filtered.length){
+        showToast(filtered.length + "건의 반복 일정이 생성되었습니다.");
+        btn.disabled = false;
+        btn.textContent = "반복일정 생성";
+        refreshAll();
+        return;
+      }
+      apiPost({ action: "create", data: filtered[done] }).then(function(){
+        done++;
+        btn.textContent = "생성 중... (" + done + "/" + filtered.length + ")";
+        next();
+      }).catch(function(){
+        done++;
+        next();
+      });
+    }
+    next();
+  });
+});
+
+/** 향후 1년치 목요일/마지막주 목요일/마지막주 금요일 반복 일정 payload 목록 생성 */
+function buildRecurringEventPayloads(){
+  var start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  var end = new Date(start);
+  end.setFullYear(end.getFullYear() + 1);
+
+  var result = [];
+  var cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  var limitMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+
+  while (cursor <= limitMonth){
+    var year = cursor.getFullYear();
+    var month = cursor.getMonth();
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var thursdays = [];
+    var lastFriday = null;
+
+    for (var d = 1; d <= daysInMonth; d++){
+      var date = new Date(year, month, d);
+      var dow = date.getDay();
+      if (dow === 4) thursdays.push(date);
+      if (dow === 5) lastFriday = date;
+    }
+
+    thursdays.forEach(function(th, idx){
+      if (th < start || th > end) return;
+      var isLast = idx === thursdays.length - 1;
+      result.push({
+        date: fmt(th.getFullYear(), th.getMonth(), th.getDate()),
+        category: "team",
+        stage: "", company: "", item: isLast ? "브이팀회의&지식DB" : "브이팀회의",
+        imageUrl: "", variants: "", description: ""
+      });
+    });
+
+    if (lastFriday && lastFriday >= start && lastFriday <= end){
+      result.push({
+        date: fmt(lastFriday.getFullYear(), lastFriday.getMonth(), lastFriday.getDate()),
+        category: "other",
+        stage: "", company: "", item: "오픈한 북클럽",
+        imageUrl: "", variants: "", description: ""
+      });
+    }
+
+    cursor.setMonth(cursor.getMonth() + 1);
   }
   return result;
 }
