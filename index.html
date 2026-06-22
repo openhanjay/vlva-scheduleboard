@@ -339,16 +339,16 @@ function buildCell(dateStr, dayLabel, isOutside){
   cell.appendChild(headerRow);
   var cellDow = new Date(dateStr + "T00:00:00").getDay();
   var dayEvents = events.filter(function(e){
-    if (e.category === "leave"){
-      if (cellDow === 0 || cellDow === 6) return false; // 주말 제외
-      if (e.date === dateStr) return true;
-      var ld = parseLeaveDesc(e.description);
-      if (ld.dateEnd && ld.dateEnd > e.date){
-        return dateStr > e.date && dateStr <= ld.dateEnd;
-      }
-      return false;
+    var dateEnd = getEventDateEnd(e);
+    // 주말 제외 (production/shoot 제외한 범위 이벤트)
+    if (dateEnd && e.category !== "production" && e.category !== "shoot"){
+      if (cellDow === 0 || cellDow === 6) return false;
     }
-    return e.date === dateStr;
+    if (e.date === dateStr) return true;
+    if (dateEnd && dateEnd > e.date){
+      return dateStr > e.date && dateStr <= dateEnd;
+    }
+    return false;
   });
   var RECURRING_ITEMS = ["브이팀회의", "브이팀회의&지식DB", "오픈한 북클럽"];
   dayEvents.forEach(function(ev){
@@ -489,12 +489,23 @@ function renderMemberForm(ev){
   title.style.color = m.text;
   memberPanelContent.appendChild(title);
 
-  // 날짜
-  var dl = document.createElement("div"); dl.className = "field-label"; dl.textContent = "날짜"; memberPanelContent.appendChild(dl);
-  var dateInp = document.createElement("input"); dateInp.type = "date";
-  dateInp.value = isEdit ? ev.date : (selectedDate || "");
-  dateInp.style.cssText = "width:100%;padding:7px 9px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);margin-bottom:10px;";
-  memberPanelContent.appendChild(dateInp);
+  // 날짜 범위 (시작일 ~ 종료일)
+  var dateRangeDiv = document.createElement("div"); dateRangeDiv.style.cssText="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;";
+  var msw=document.createElement("div"); msw.style.flex="1";
+  var msl=document.createElement("div"); msl.className="field-label"; msl.textContent="시작일"; msw.appendChild(msl);
+  var dateInp=document.createElement("input"); dateInp.type="date";
+  dateInp.value=isEdit?ev.date:(selectedDate||"");
+  dateInp.style.cssText="width:100%;padding:7px 9px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);";
+  msw.appendChild(dateInp);
+  var mar=document.createElement("span"); mar.textContent="~"; mar.style.cssText="padding-bottom:9px;color:var(--color-text-secondary);flex-shrink:0;";
+  var mew=document.createElement("div"); mew.style.flex="1";
+  var mel=document.createElement("div"); mel.className="field-label"; mel.textContent="종료일"; mew.appendChild(mel);
+  var dateEndInp=document.createElement("input"); dateEndInp.type="date";
+  dateEndInp.value=isEdit?getEventDateEnd(ev):(selectedDate||"");
+  dateEndInp.style.cssText="width:100%;padding:7px 9px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);";
+  mew.appendChild(dateEndInp);
+  dateRangeDiv.appendChild(msw); dateRangeDiv.appendChild(mar); dateRangeDiv.appendChild(mew);
+  memberPanelContent.appendChild(dateRangeDiv);
 
   // 제목
   var tl = document.createElement("div"); tl.className = "field-label"; tl.textContent = "제목"; memberPanelContent.appendChild(tl);
@@ -537,7 +548,7 @@ function renderMemberForm(ev){
       id: isEdit ? ev.id : undefined,
       date: dateInp.value,
       category: selectedMember,
-      stage: "", company: "",
+      stage: "", company: dateEndInp.value||"",
       item: titleInp.value,
       imageUrl: "", variants: "",
       description: contentInp.value
@@ -644,16 +655,15 @@ function renderPanelList(dateStr){
   var dateEl = document.createElement("div"); dateEl.className = "panel-date"; dateEl.textContent = fmtDateKorean(dateStr); panel.appendChild(dateEl);
   var panelDow = new Date(dateStr + "T00:00:00").getDay();
   var dayEvents = events.filter(function(e){
-    if (e.category === "leave"){
+    var dateEnd = getEventDateEnd(e);
+    if (dateEnd && e.category !== "production" && e.category !== "shoot"){
       if (panelDow === 0 || panelDow === 6) return false;
-      if (e.date === dateStr) return true;
-      var ld = parseLeaveDesc(e.description);
-      if (ld.dateEnd && ld.dateEnd > e.date){
-        return dateStr > e.date && dateStr <= ld.dateEnd;
-      }
-      return false;
     }
-    return e.date === dateStr;
+    if (e.date === dateStr) return true;
+    if (dateEnd && dateEnd > e.date){
+      return dateStr > e.date && dateStr <= dateEnd;
+    }
+    return false;
   });
   var subtitle = document.createElement("div"); subtitle.className = "panel-subtitle";
   subtitle.textContent = dayEvents.length > 0 ? "일정 " + dayEvents.length + "건" : "등록된 일정이 없습니다"; panel.appendChild(subtitle);
@@ -678,7 +688,11 @@ function renderPanelList(dateStr){
       if (lpd.dateEnd && lpd.dateEnd > ev.date) leaveParts.push(fmtDateKorean(ev.date) + " ~ " + fmtDateKorean(lpd.dateEnd));
       mainEl.textContent = leaveParts.join(" · ");
     } else {
-      mainEl.textContent = ev.item || "";
+      var dateEnd = getEventDateEnd(ev);
+      var parts = [];
+      if (ev.item) parts.push(ev.item);
+      if (dateEnd && dateEnd !== ev.date) parts.push(fmtDateKorean(ev.date) + " ~ " + fmtDateKorean(dateEnd));
+      mainEl.textContent = parts.join("  ");
     }
     item.appendChild(mainEl);
     if (ev.category === "production" && ev.variants){
@@ -850,6 +864,22 @@ function renderPanelForm(dateStr, ev){
     fields[key]=inp; formWrap.appendChild(wrap);
     return inp;
   }
+  function mkDateRange(startVal, endVal){
+    var wrap=document.createElement("div"); wrap.style.cssText="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;";
+    var sw=document.createElement("div"); sw.style.flex="1";
+    var sl=document.createElement("div"); sl.className="field-label"; sl.textContent="시작일"; sw.appendChild(sl);
+    var si=document.createElement("input"); si.type="date"; si.id="pf-start"; si.value=startVal||"";
+    si.style.cssText="width:100%;padding:7px 9px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);";
+    sw.appendChild(si);
+    var ar=document.createElement("span"); ar.textContent="~"; ar.style.cssText="padding-bottom:9px;color:var(--color-text-secondary);flex-shrink:0;";
+    var ew=document.createElement("div"); ew.style.flex="1";
+    var el=document.createElement("div"); el.className="field-label"; el.textContent="종료일"; ew.appendChild(el);
+    var ei=document.createElement("input"); ei.type="date"; ei.id="pf-end"; ei.value=endVal||startVal||"";
+    ei.style.cssText="width:100%;padding:7px 9px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);";
+    ew.appendChild(ei);
+    wrap.appendChild(sw); wrap.appendChild(ar); wrap.appendChild(ew);
+    formWrap.appendChild(wrap);
+  }
   function mkDate(labelText, id, val){
     var wrap=document.createElement("div"); wrap.className="field";
     var lab=document.createElement("div"); lab.className="field-label"; lab.textContent=labelText; wrap.appendChild(lab);
@@ -959,7 +989,9 @@ function renderPanelForm(dateStr, ev){
       mkDate("날짜","pf-start",isEdit?ev.date:dateStr);
       mkField("업체명","company",isEdit?ev.company:""); mkField("상품명","item",isEdit?ev.item:"");
     } else {
-      mkDate("날짜","pf-start",isEdit?ev.date:dateStr);
+      // 날짜 범위 (시작일 ~ 종료일)
+      var savedEnd = isEdit ? getEventDateEnd(ev) : "";
+      mkDateRange(isEdit?ev.date:dateStr, savedEnd||"");
       mkField("제목","item",isEdit?ev.item:""); mkField("내용","description",isEdit?ev.description:"",true);
     }
   }
@@ -1067,6 +1099,14 @@ function renderPanelForm(dateStr, ev){
       descVal = fields.description ? fields.description.value : "";
     }
 
+    // non-leave, non-production/shoot 카테고리: company에 dateEnd 저장
+    if (cat !== "leave" && cat !== "production" && cat !== "shoot") {
+      var endElForSave = document.getElementById("pf-end");
+      if (endElForSave && endElForSave.value) {
+        // company 필드를 dateEnd로 사용 (이 카테고리들은 업체명 없음)
+        // fields.company가 없으므로 payload에서 직접 처리
+      }
+    }
     // 파샬/전체 선택 반영해 stage 합성
     var finalStage = fields.stage ? fields.stage.value : "";
     if(cat==="production" && (finalStage==="expected"||finalStage==="completed")){
@@ -1082,7 +1122,7 @@ function renderPanelForm(dateStr, ev){
       date:startVal,
       category:cat,
       stage:finalStage,
-      company:fields.company?fields.company.value:"",
+      company:(cat!=="leave"&&cat!=="production"&&cat!=="shoot")?(document.getElementById("pf-end")?document.getElementById("pf-end").value:""):(fields.company?fields.company.value:""),
       item:fields.item?fields.item.value:"",
       imageUrl:isEdit?(ev.imageUrl||""):"",
       variants:cat==="production"?stringifyVariants(variants):"",
@@ -1098,6 +1138,15 @@ function renderPanelForm(dateStr, ev){
 
 function refreshAllAndShowList(dateStr){
   Promise.all([loadEvents(), loadHolidays(view.year, view.month)]).then(function(){ render(); renderPanelList(dateStr); });
+}
+function getEventDateEnd(ev){
+  // leave: description 인코딩에서 추출
+  if (ev.category === "leave") return parseLeaveDesc(ev.description).dateEnd || "";
+  // production/shoot: company = 업체명이므로 dateEnd 없음
+  if (ev.category === "production" || ev.category === "shoot") return "";
+  // 나머지: company 필드에 종료일 저장
+  var c = ev.company || "";
+  return (c && /^\d{4}-\d{2}-\d{2}$/.test(String(c))) ? c : "";
 }
 function calcRemainingVariants(variantStr){
   // 파샬 입고 후 잔여수량 계산: qty - cutQty
