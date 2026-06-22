@@ -192,8 +192,9 @@
             <div class="legend-item"><span class="dot" style="background:#E24B4A;"></span>메인</div>
             <div class="legend-item"><span class="dot" style="background:#378ADD;"></span>샘플</div>
             <div class="legend-item"><span class="dot" style="background:#EF9F27;"></span>연차</div>
-            <div class="legend-item"><span class="dot" style="background:#639922;"></span>팀 일정</div>
-            <div class="legend-item"><span class="dot" style="background:#888780;"></span>타부서</div>
+            <div class="legend-item"><span class="dot" style="background:#39FF14;"></span>중요일정</div>
+            <div class="legend-item"><span class="dot" style="background:#FFE000;"></span>팀 일정</div>
+            <div class="legend-item"><span class="dot" style="background:#29B6F6;"></span>타부서</div>
           </div>
           <button id="prev-btn">&#9666;</button>
           <button id="today-btn">오늘</button>
@@ -212,6 +213,9 @@
   </div>
 
   <div class="side-col">
+    <div class="panel" id="member-panel" style="margin-bottom:12px;">
+      <div id="member-panel-content"></div>
+    </div>
     <div class="panel" id="panel">
       <div class="panel-empty">날짜를 클릭하면 그날의 일정이 여기에 표시됩니다.</div>
     </div>
@@ -224,11 +228,21 @@
 var API_URL = "https://script.google.com/macros/s/AKfycbw7isRxme_nzrVS-hQf_IttVR04o2tfSmyFPx_9qrtPAmImot1c_ZmO50LV5lkOLxuj8A/exec";
 
 var CATS = {
-  production: { label: "메인", color: "#E24B4A", bg: "#FCEBEB", text: "#791F1F", text2: "#A32D2D" },
-  shoot:       { label: "샘플", color: "#378ADD", bg: "#E6F1FB", text: "#0C447C" },
-  leave:       { label: "연차", color: "#EF9F27", bg: "#FAEEDA", text: "#633806" },
-  team:        { label: "팀 일정", color: "#639922", bg: "#EAF3DE", text: "#27500A" },
-  other:       { label: "타부서", color: "#888780", bg: "#F1EFE8", text: "#444441" }
+  production: { label: "메인",    color: "#E24B4A", bg: "#FCEBEB", text: "#791F1F", text2: "#A32D2D" },
+  shoot:       { label: "샘플",    color: "#378ADD", bg: "#E6F1FB", text: "#0C447C" },
+  leave:       { label: "연차",    color: "#EF9F27", bg: "#FAEEDA", text: "#633806" },
+  important:   { label: "중요일정", color: "#39FF14", bg: "#EDFFD6", text: "#1A6600" },
+  team:        { label: "팀 일정", color: "#FFE000", bg: "#FFFBE0", text: "#6B5000" },
+  other:       { label: "타부서",  color: "#29B6F6", bg: "#E1F5FE", text: "#014361" }
+};
+
+var MEMBERS = {
+  kevin: { label: "케빈",  color: "#8B9A46", bg: "#F2F4E8", text: "#3D4A00" },
+  mendi: { label: "멘디",  color: "#FF7043", bg: "#FFF3EE", text: "#7A2000" },
+  alex:  { label: "알렉스", color: "#1E88E5", bg: "#E8F4FD", text: "#0A3875" },
+  sena:  { label: "세나",  color: "#8E24AA", bg: "#F5EBF9", text: "#4A0060" },
+  lion:  { label: "라이온", color: "#00ACC1", bg: "#E0F7FA", text: "#004D61" },
+  jay:   { label: "제이",  color: "#FF1493", bg: "#FFE0F0", text: "#8B0057" }
 };
 function getStages(cat){
   return [
@@ -338,7 +352,7 @@ function buildCell(dateStr, dayLabel, isOutside){
   });
   var RECURRING_ITEMS = ["브이팀회의", "브이팀회의&지식DB", "오픈한 북클럽"];
   dayEvents.forEach(function(ev){
-    var c = CATS[ev.category] || CATS.other;
+    var c = CATS[ev.category] || MEMBERS[ev.category] || CATS.other;
     // 고정 반복일정: 날짜 옆 인라인 태그
     if (RECURRING_ITEMS.indexOf(ev.item) !== -1){
       var tag = document.createElement("span");
@@ -360,6 +374,8 @@ function buildCell(dateStr, dayLabel, isOutside){
       if (ev.category === "leave"){
         var cld = parseLeaveDesc(ev.description);
         if (cld.type) displayText += " · " + cld.type;
+      } else if (MEMBERS[ev.category]){
+        displayText = MEMBERS[ev.category].label + (ev.item ? " · " + ev.item : "");
       }
       txt.textContent = displayText; card.appendChild(txt);
     }
@@ -380,6 +396,163 @@ function render(){
     grid.appendChild(buildCell(fmt(view.year, view.month, dayNum), dayNum, false));
   }
 }
+/* ---- 팀원 개인 일정 패널 ---- */
+var memberPanelContent = document.getElementById("member-panel-content");
+var selectedMember = null;
+
+function renderMemberPanel(){
+  memberPanelContent.innerHTML = "";
+
+  // 멤버 버튼 행
+  var btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex;gap:4px;flex-wrap:nowrap;margin-bottom:12px;overflow-x:auto;";
+  Object.keys(MEMBERS).forEach(function(key){
+    var m = MEMBERS[key];
+    var btn = document.createElement("button");
+    btn.textContent = m.label;
+    btn.style.cssText = "font-size:11px;padding:4px 7px;border-radius:var(--radius-md);border:1.5px solid "+m.color+";cursor:pointer;font-family:inherit;transition:all 0.15s;white-space:nowrap;";
+    if(selectedMember === key){
+      btn.style.background = m.color; btn.style.color = "#fff";
+    } else {
+      btn.style.background = m.bg; btn.style.color = m.text;
+    }
+    btn.addEventListener("click", function(){
+      selectedMember = (selectedMember === key) ? null : key;
+      renderMemberPanel();
+    });
+    btnRow.appendChild(btn);
+  });
+  memberPanelContent.appendChild(btnRow);
+
+  if(!selectedMember){
+    var hint = document.createElement("div");
+    hint.style.cssText = "font-size:12px;color:var(--color-text-tertiary);text-align:center;padding:8px 0;";
+    hint.textContent = "팀원을 선택하면 개인 일정을 볼 수 있습니다.";
+    memberPanelContent.appendChild(hint);
+    return;
+  }
+
+  var m = MEMBERS[selectedMember];
+
+  // 새 일정 추가 버튼
+  var addBtn = document.createElement("button");
+  addBtn.className = "primary panel-add-btn";
+  addBtn.textContent = "+ " + m.label + " 일정 추가";
+  addBtn.addEventListener("click", function(){ renderMemberForm(null); });
+  memberPanelContent.appendChild(addBtn);
+
+  // 해당 멤버 일정 목록
+  var memberEvents = events.filter(function(e){ return e.category === selectedMember; })
+    .sort(function(a,b){ return a.date < b.date ? -1 : 1; });
+
+  if(memberEvents.length === 0){
+    var empty = document.createElement("div");
+    empty.style.cssText = "font-size:12px;color:var(--color-text-tertiary);text-align:center;padding:12px 0;";
+    empty.textContent = "등록된 일정이 없습니다.";
+    memberPanelContent.appendChild(empty);
+  } else {
+    memberEvents.forEach(function(ev){
+      var item = document.createElement("div");
+      item.className = "panel-list-item";
+      item.style.background = m.bg; item.style.borderColor = m.color;
+      var dateEl = document.createElement("div");
+      dateEl.className = "panel-list-cat"; dateEl.style.color = m.text;
+      dateEl.textContent = fmtDateKorean(ev.date);
+      item.appendChild(dateEl);
+      var titleEl = document.createElement("div");
+      titleEl.className = "panel-list-main"; titleEl.textContent = ev.item || "";
+      item.appendChild(titleEl);
+      if(ev.description){
+        var descEl = document.createElement("div");
+        descEl.style.cssText = "font-size:11px;color:var(--color-text-secondary);margin-top:3px;";
+        descEl.textContent = ev.description;
+        item.appendChild(descEl);
+      }
+      item.addEventListener("click", function(){ renderMemberForm(ev); });
+      memberPanelContent.appendChild(item);
+    });
+  }
+}
+
+function renderMemberForm(ev){
+  var isEdit = !!ev;
+  var m = MEMBERS[selectedMember];
+  memberPanelContent.innerHTML = "";
+
+  var backBtn = document.createElement("button");
+  backBtn.className = "panel-back-btn"; backBtn.textContent = "← 목록으로";
+  backBtn.addEventListener("click", function(){ renderMemberPanel(); });
+  memberPanelContent.appendChild(backBtn);
+
+  var title = document.createElement("h2"); title.className = "panel-title";
+  title.textContent = m.label + " 일정 " + (isEdit ? "수정" : "등록");
+  title.style.color = m.text;
+  memberPanelContent.appendChild(title);
+
+  // 날짜
+  var dl = document.createElement("div"); dl.className = "field-label"; dl.textContent = "날짜"; memberPanelContent.appendChild(dl);
+  var dateInp = document.createElement("input"); dateInp.type = "date";
+  dateInp.value = isEdit ? ev.date : (selectedDate || "");
+  dateInp.style.cssText = "width:100%;padding:7px 9px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);margin-bottom:10px;";
+  memberPanelContent.appendChild(dateInp);
+
+  // 제목
+  var tl = document.createElement("div"); tl.className = "field-label"; tl.textContent = "제목"; memberPanelContent.appendChild(tl);
+  var titleInp = document.createElement("input"); titleInp.type = "text";
+  titleInp.value = isEdit ? (ev.item || "") : "";
+  titleInp.style.cssText = "width:100%;padding:7px 9px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);margin-bottom:10px;";
+  memberPanelContent.appendChild(titleInp);
+
+  // 내용
+  var cl = document.createElement("div"); cl.className = "field-label"; cl.textContent = "내용"; memberPanelContent.appendChild(cl);
+  var contentInp = document.createElement("textarea"); contentInp.rows = 3;
+  contentInp.value = isEdit ? (ev.description || "") : "";
+  contentInp.style.cssText = "width:100%;padding:7px 9px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);margin-bottom:10px;resize:vertical;";
+  memberPanelContent.appendChild(contentInp);
+
+  // 버튼 행
+  var btnRow = document.createElement("div"); btnRow.className = "btn-row";
+  var leftBtns = document.createElement("div");
+  if(isEdit){
+    var delBtn = document.createElement("button"); delBtn.className = "danger"; delBtn.textContent = "삭제";
+    delBtn.addEventListener("click", function(){
+      delBtn.disabled = true; delBtn.textContent = "삭제 중...";
+      apiPost({action:"delete", id:ev.id}).then(function(){
+        showToast("삭제되었습니다."); loadEvents().then(function(){ render(); renderMemberPanel(); });
+      });
+    });
+    leftBtns.appendChild(delBtn);
+  }
+  btnRow.appendChild(leftBtns);
+
+  var rightBtns = document.createElement("div"); rightBtns.className = "btn-row-right";
+  var cancelBtn = document.createElement("button"); cancelBtn.textContent = "취소";
+  cancelBtn.addEventListener("click", function(){ renderMemberPanel(); }); rightBtns.appendChild(cancelBtn);
+
+  var saveBtn = document.createElement("button"); saveBtn.className = "primary"; saveBtn.textContent = "저장";
+  saveBtn.addEventListener("click", function(){
+    if(!dateInp.value){ showToast("날짜를 입력해주세요."); return; }
+    saveBtn.disabled = true; saveBtn.textContent = "저장 중...";
+    var payload = {
+      id: isEdit ? ev.id : undefined,
+      date: dateInp.value,
+      category: selectedMember,
+      stage: "", company: "",
+      item: titleInp.value,
+      imageUrl: "", variants: "",
+      description: contentInp.value
+    };
+    apiPost({action: isEdit?"update":"create", data: payload}).then(function(res){
+      if(res.success===false){ showToast(res.error||"저장 중 오류"); saveBtn.disabled=false; saveBtn.textContent="저장"; return; }
+      showToast("저장되었습니다.");
+      loadEvents().then(function(){ render(); renderMemberPanel(); });
+    }).catch(function(){ showToast("저장 중 오류가 발생했습니다."); saveBtn.disabled=false; saveBtn.textContent="저장"; });
+  });
+  rightBtns.appendChild(saveBtn);
+  btnRow.appendChild(rightBtns);
+  memberPanelContent.appendChild(btnRow);
+}
+
 /* ---- 반복 일정 자동 유지 ---- */
 var RECURRING_ITEM_NAMES = ["브이팀회의", "브이팀회의&지식DB", "오픈한 북클럽"];
 
@@ -461,6 +634,7 @@ function refreshAll(){
   Promise.all([loadEvents(), loadHolidays(view.year, view.month)]).then(function(){
     render();
     if (selectedDate) renderPanelList(selectedDate);
+    renderMemberPanel();
     // 반복일정 자동 보충 (백그라운드)
     autoFillRecurring();
   });
@@ -486,7 +660,7 @@ function renderPanelList(dateStr){
   var addBtn = document.createElement("button"); addBtn.className = "primary panel-add-btn"; addBtn.textContent = "+ 새 일정 추가";
   addBtn.addEventListener("click", function(){ renderPanelForm(dateStr, null); }); panel.appendChild(addBtn);
   dayEvents.forEach(function(ev){
-    var c = CATS[ev.category] || CATS.other;
+    var c = CATS[ev.category] || MEMBERS[ev.category] || CATS.other;
     var item = document.createElement("div"); item.className = "panel-list-item";
     item.style.background = c.bg;
     item.style.borderColor = c.color;
@@ -635,14 +809,27 @@ function renderPanelForm(dateStr, ev){
   var catRow = document.createElement("div"); catRow.className = "cat-row";
   Object.keys(CATS).forEach(function(key){
     var b = document.createElement("button"); b.className = "cat-btn"; b.textContent = CATS[key].label; b.dataset.cat = key;
-    function paint(){ var sel=key===cat; b.style.borderColor=sel?CATS[key].color:""; b.style.background=sel?CATS[key].bg:""; b.style.color=sel?CATS[key].text:""; }
+    function paint(){
+      var sel=key===cat;
+      b.style.borderColor=CATS[key].color;
+      b.style.background=CATS[key].bg;
+      b.style.color=CATS[key].text;
+      b.style.opacity=sel?"1":"0.55";
+      b.style.fontWeight=sel?"700":"400";
+      b.style.boxShadow=sel?"0 0 0 2px "+CATS[key].color:"none";
+    }
     paint();
     b.addEventListener("click", function(){
       cat=key;
       buildForm();
       Array.prototype.forEach.call(catRow.children,function(btn){
         var k=btn.dataset.cat; var sel=k===cat;
-        btn.style.borderColor=sel?CATS[k].color:""; btn.style.background=sel?CATS[k].bg:""; btn.style.color=sel?CATS[k].text:"";
+        btn.style.borderColor=CATS[k].color;
+        btn.style.background=CATS[k].bg;
+        btn.style.color=CATS[k].text;
+        btn.style.opacity=sel?"1":"0.55";
+        btn.style.fontWeight=sel?"700":"400";
+        btn.style.boxShadow=sel?"0 0 0 2px "+CATS[k].color:"none";
       });
     });
     catRow.appendChild(b);
@@ -968,6 +1155,7 @@ document.getElementById("month-select").addEventListener("change", function(){
   view.month = parseInt(this.value); refreshAll();
 });
 refreshAll();
+renderMemberPanel();
 </script>
 </body>
 </html>
