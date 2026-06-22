@@ -442,8 +442,14 @@ function renderMemberPanel(){
   memberPanelContent.appendChild(addBtn);
 
   // 해당 멤버 일정 목록
-  var memberEvents = events.filter(function(e){ return e.category === selectedMember; })
-    .sort(function(a,b){ return a.date < b.date ? -1 : 1; });
+  var todayStr = fmt(today.getFullYear(), today.getMonth(), today.getDate());
+  var memberEvents = events.filter(function(e){
+    if (e.category !== selectedMember) return false;
+    // 종료일이 있으면 종료일 기준, 없으면 시작일 기준
+    var endDate = getEventDateEnd(e);
+    var checkDate = (endDate && endDate > e.date) ? endDate : e.date;
+    return checkDate >= todayStr;
+  }).sort(function(a,b){ return a.date < b.date ? -1 : 1; });
 
   if(memberEvents.length === 0){
     var empty = document.createElement("div");
@@ -462,11 +468,18 @@ function renderMemberPanel(){
       var titleEl = document.createElement("div");
       titleEl.className = "panel-list-main"; titleEl.textContent = ev.item || "";
       item.appendChild(titleEl);
-      if(ev.description){
+      var pureDescM = getEventDesc(ev);
+      var dateEndM = getEventDateEnd(ev);
+      if(pureDescM){
         var descEl = document.createElement("div");
         descEl.style.cssText = "font-size:11px;color:var(--color-text-secondary);margin-top:3px;";
-        descEl.textContent = ev.description;
-        item.appendChild(descEl);
+        descEl.textContent = pureDescM; item.appendChild(descEl);
+      }
+      if(dateEndM && dateEndM !== ev.date){
+        var rangeEl = document.createElement("div");
+        rangeEl.style.cssText = "font-size:11px;color:var(--color-text-secondary);margin-top:2px;";
+        rangeEl.textContent = fmtDateKorean(ev.date) + " ~ " + fmtDateKorean(dateEndM);
+        item.appendChild(rangeEl);
       }
       item.addEventListener("click", function(){ renderMemberForm(ev); });
       memberPanelContent.appendChild(item);
@@ -501,7 +514,8 @@ function renderMemberForm(ev){
   var mew=document.createElement("div"); mew.style.flex="1";
   var mel=document.createElement("div"); mel.className="field-label"; mel.textContent="종료일"; mew.appendChild(mel);
   var dateEndInp=document.createElement("input"); dateEndInp.type="date";
-  dateEndInp.value=isEdit?getEventDateEnd(ev):(selectedDate||"");
+  var memberSavedEnd = isEdit ? getEventDateEnd(ev) : "";
+  dateEndInp.value = memberSavedEnd || (isEdit ? ev.date : (selectedDate||""));
   dateEndInp.style.cssText="width:100%;padding:7px 9px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);";
   mew.appendChild(dateEndInp);
   dateRangeDiv.appendChild(msw); dateRangeDiv.appendChild(mar); dateRangeDiv.appendChild(mew);
@@ -517,7 +531,7 @@ function renderMemberForm(ev){
   // 내용
   var cl = document.createElement("div"); cl.className = "field-label"; cl.textContent = "내용"; memberPanelContent.appendChild(cl);
   var contentInp = document.createElement("textarea"); contentInp.rows = 3;
-  contentInp.value = isEdit ? (ev.description || "") : "";
+  contentInp.value = isEdit ? getEventDesc(ev) : "";
   contentInp.style.cssText = "width:100%;padding:7px 9px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);margin-bottom:10px;resize:vertical;";
   memberPanelContent.appendChild(contentInp);
 
@@ -544,14 +558,21 @@ function renderMemberForm(ev){
   saveBtn.addEventListener("click", function(){
     if(!dateInp.value){ showToast("날짜를 입력해주세요."); return; }
     saveBtn.disabled = true; saveBtn.textContent = "저장 중...";
+    var memberEndVal = dateEndInp.value || "";
+    var memberStartVal = dateInp.value || "";
+    var memberDesc = contentInp.value || "";
+    // 종료일이 시작일과 다르면 description에 인코딩
+    if (memberEndVal && memberEndVal !== memberStartVal) {
+      memberDesc = memberDesc + "||" + memberEndVal;
+    }
     var payload = {
       id: isEdit ? ev.id : undefined,
-      date: dateInp.value,
+      date: memberStartVal,
       category: selectedMember,
-      stage: "", company: dateEndInp.value||"",
+      stage: "", company: "",
       item: titleInp.value,
       imageUrl: "", variants: "",
-      description: contentInp.value
+      description: memberDesc
     };
     apiPost({action: isEdit?"update":"create", data: payload}).then(function(res){
       if(res.success===false){ showToast(res.error||"저장 중 오류"); saveBtn.disabled=false; saveBtn.textContent="저장"; return; }
@@ -691,8 +712,10 @@ function renderPanelList(dateStr){
       var dateEnd = getEventDateEnd(ev);
       var parts = [];
       if (ev.item) parts.push(ev.item);
+      var pureDesc = getEventDesc(ev);
+      if (pureDesc) parts.push(pureDesc);
       if (dateEnd && dateEnd !== ev.date) parts.push(fmtDateKorean(ev.date) + " ~ " + fmtDateKorean(dateEnd));
-      mainEl.textContent = parts.join("  ");
+      mainEl.textContent = parts.join(" · ");
     }
     item.appendChild(mainEl);
     if (ev.category === "production" && ev.variants){
@@ -816,6 +839,10 @@ function renderPanelForm(dateStr, ev){
   var variants = isEdit && ev.variants ? parseVariants(ev.variants) : [{type:"color",color:"",size:"",qty:""}];
   panel.innerHTML = "";
 
+  // 날짜범위 카테고리 (시작일~종료일) / 단일 날짜 카테고리
+  var RANGE_CATS = ["leave","important","team","other","kevin","mendi","alex","sena","lion","jay"];
+  var isRangeCat = RANGE_CATS.indexOf(cat) !== -1;
+
   var backBtn = document.createElement("button"); backBtn.className = "panel-back-btn"; backBtn.textContent = "← 목록으로";
   backBtn.addEventListener("click", function(){ renderPanelList(dateStr); }); panel.appendChild(backBtn);
   var title = document.createElement("h2"); title.className = "panel-title"; title.textContent = isEdit ? "일정 수정" : "일정 등록"; panel.appendChild(title);
@@ -825,47 +852,47 @@ function renderPanelForm(dateStr, ev){
     var b = document.createElement("button"); b.className = "cat-btn"; b.textContent = CATS[key].label; b.dataset.cat = key;
     function paint(){
       var sel=key===cat;
-      b.style.borderColor=CATS[key].color;
-      b.style.background=CATS[key].bg;
-      b.style.color=CATS[key].text;
-      b.style.opacity=sel?"1":"0.55";
-      b.style.fontWeight=sel?"700":"400";
+      b.style.borderColor=CATS[key].color; b.style.background=CATS[key].bg; b.style.color=CATS[key].text;
+      b.style.opacity=sel?"1":"0.55"; b.style.fontWeight=sel?"700":"400";
       b.style.boxShadow=sel?"0 0 0 2px "+CATS[key].color:"none";
     }
     paint();
     b.addEventListener("click", function(){
       cat=key;
+      isRangeCat = RANGE_CATS.indexOf(cat) !== -1;
       buildForm();
       Array.prototype.forEach.call(catRow.children,function(btn){
         var k=btn.dataset.cat; var sel=k===cat;
-        btn.style.borderColor=CATS[k].color;
-        btn.style.background=CATS[k].bg;
-        btn.style.color=CATS[k].text;
-        btn.style.opacity=sel?"1":"0.55";
-        btn.style.fontWeight=sel?"700":"400";
+        btn.style.borderColor=CATS[k].color; btn.style.background=CATS[k].bg; btn.style.color=CATS[k].text;
+        btn.style.opacity=sel?"1":"0.55"; btn.style.fontWeight=sel?"700":"400";
         btn.style.boxShadow=sel?"0 0 0 2px "+CATS[k].color:"none";
       });
     });
     catRow.appendChild(b);
   }); panel.appendChild(catRow);
 
-  // 폼 컨테이너
   var formWrap = document.createElement("div"); panel.appendChild(formWrap);
 
   var fields = {};
   var recordPicked=false, pickedCompany="", pickedItem="";
   var variantListEl;
 
+  // ---- 헬퍼 함수 ----
   function mkField(labelText, key, val, isTextarea){
     var wrap=document.createElement("div"); wrap.className="field";
     var lab=document.createElement("div"); lab.className="field-label"; lab.textContent=labelText; wrap.appendChild(lab);
     var inp=document.createElement(isTextarea?"textarea":"input");
     if(isTextarea) inp.rows=3; else inp.type="text"; inp.value=val||""; wrap.appendChild(inp);
-    fields[key]=inp; formWrap.appendChild(wrap);
-    return inp;
+    fields[key]=inp; formWrap.appendChild(wrap); return inp;
+  }
+  function mkSingleDate(val){
+    var wrap=document.createElement("div"); wrap.className="field";
+    var lab=document.createElement("div"); lab.className="field-label"; lab.textContent="날짜"; wrap.appendChild(lab);
+    var inp=document.createElement("input"); inp.type="date"; inp.id="pf-start"; inp.value=val||""; wrap.appendChild(inp);
+    formWrap.appendChild(wrap); return inp;
   }
   function mkDateRange(startVal, endVal){
-    var wrap=document.createElement("div"); wrap.style.cssText="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;";
+    var row=document.createElement("div"); row.style.cssText="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;";
     var sw=document.createElement("div"); sw.style.flex="1";
     var sl=document.createElement("div"); sl.className="field-label"; sl.textContent="시작일"; sw.appendChild(sl);
     var si=document.createElement("input"); si.type="date"; si.id="pf-start"; si.value=startVal||"";
@@ -877,76 +904,115 @@ function renderPanelForm(dateStr, ev){
     var ei=document.createElement("input"); ei.type="date"; ei.id="pf-end"; ei.value=endVal||startVal||"";
     ei.style.cssText="width:100%;padding:7px 9px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);";
     ew.appendChild(ei);
-    wrap.appendChild(sw); wrap.appendChild(ar); wrap.appendChild(ew);
-    formWrap.appendChild(wrap);
-  }
-  function mkDate(labelText, id, val){
-    var wrap=document.createElement("div"); wrap.className="field";
-    var lab=document.createElement("div"); lab.className="field-label"; lab.textContent=labelText; wrap.appendChild(lab);
-    var inp=document.createElement("input"); inp.type="date"; inp.id=id; inp.value=val||"";
-    wrap.appendChild(inp); formWrap.appendChild(wrap);
-    return inp;
+    row.appendChild(sw); row.appendChild(ar); row.appendChild(ew);
+    formWrap.appendChild(row);
   }
   function mkStage(val){
-    // val은 base stage이거나 _p variant일 수 있음
-    var baseVal = getBaseStage(val);
+    var baseVal=getBaseStage(val);
     var wrap=document.createElement("div"); wrap.className="field";
     var lab=document.createElement("div"); lab.className="field-label"; lab.textContent="단계"; wrap.appendChild(lab);
     var sel=document.createElement("select");
     getStages(cat).forEach(function(s){ var o=document.createElement("option"); o.value=s.value; o.textContent=s.label; if(s.value===baseVal) o.selected=true; sel.appendChild(o); });
     sel.addEventListener("change",function(){ recordPicked=false; buildForm(sel.value); });
     wrap.appendChild(sel); fields["stage"]=sel; formWrap.appendChild(wrap);
-    // 파샬/전체 체크박스 (단계 바로 아래)
-    if (cat==="production" && (baseVal==="expected"||baseVal==="completed")){
+    // 파샬/전체
+    if(cat==="production" && (baseVal==="expected"||baseVal==="completed")){
       var pbWrap=document.createElement("div"); pbWrap.id="pf-partial-wrap";
       pbWrap.style.cssText="display:flex;gap:20px;align-items:center;margin-bottom:12px;padding:6px 0;";
       var partial=isPartial(val);
       if(baseVal==="expected"){
-        // 파샬, 전체 라디오
         ["파샬","전체"].forEach(function(label){
           var lbl=document.createElement("label"); lbl.style.cssText="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--color-text);";
           var rb=document.createElement("input"); rb.type="radio"; rb.name="pf-partial"; rb.value=label; rb.id="pf-partial-"+label;
           if((partial&&label==="파샬")||(!partial&&label==="전체")) rb.checked=true;
-          lbl.appendChild(rb); lbl.appendChild(document.createTextNode(label));
-          pbWrap.appendChild(lbl);
+          lbl.appendChild(rb); lbl.appendChild(document.createTextNode(label)); pbWrap.appendChild(lbl);
         });
-      } else if(baseVal==="completed"){
-        // 파샬 체크박스만
+      } else {
         var lbl=document.createElement("label"); lbl.style.cssText="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--color-text);";
-        var cb=document.createElement("input"); cb.type="checkbox"; cb.id="pf-partial-파샬"; cb.value="파샬";
-        if(partial) cb.checked=true;
-        lbl.appendChild(cb); lbl.appendChild(document.createTextNode("파샬"));
-        pbWrap.appendChild(lbl);
+        var cb=document.createElement("input"); cb.type="checkbox"; cb.id="pf-partial-파샬"; cb.value="파샬"; if(partial) cb.checked=true;
+        lbl.appendChild(cb); lbl.appendChild(document.createTextNode("파샬")); pbWrap.appendChild(lbl);
       }
       formWrap.appendChild(pbWrap);
     }
   }
 
-  function buildLeaveForm(){
-    // 기존 description에서 파싱
-    var parsed = parseLeaveDesc(isEdit?ev.description:"");
-
-    // 1. 구분 선택
-    var ltWrap=document.createElement("div"); ltWrap.className="field";
-    var ltLab=document.createElement("div"); ltLab.className="field-label"; ltLab.textContent="구분"; ltWrap.appendChild(ltLab);
-    var ltSel=document.createElement("select"); ltSel.id="pf-leave-type";
-    ["연차","반차"].forEach(function(opt){
-      var o=document.createElement("option"); o.value=opt; o.textContent=opt;
-      if(parsed.type===opt) o.selected=true; ltSel.appendChild(o);
+  function renderVariantRows(){
+    variantListEl.innerHTML="";
+    var co=variants.filter(function(v){ return v.type!=="size"&&v.color; }).map(function(v){ return v.color; });
+    var uc=co.filter(function(c,i){ return co.indexOf(c)===i; });
+    var sv=fields.stage?fields.stage.value:""; var q4=(sv==="completed"||sv==="completed_p")?"입고수량":"예정수량";
+    variants.forEach(function(v,idx){
+      var row=document.createElement("div"); row.className="variant-row";
+      var sq=(sv!=="instruct"); row.style.gridTemplateColumns=sq?"1fr 1fr 0.8fr 0.8fr 26px":"1fr 1fr 0.9fr 26px";
+      var SIZES=["","F","XXS","XS","S","M","L","XL","XXL"];
+      if(v.type==="size"){
+        var sel=document.createElement("select"); sel.style.cssText="font-size:12px;padding:6px 4px;width:100%;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text);font-family:inherit;";
+        var ph=document.createElement("option"); ph.value=""; ph.textContent="컬러 선택"; sel.appendChild(ph);
+        uc.forEach(function(c){ var o=document.createElement("option"); o.value=c; o.textContent=c; if(v.parentColor===c) o.selected=true; sel.appendChild(o); });
+        sel.addEventListener("change",function(){ v.parentColor=sel.value; }); row.appendChild(sel);
+        var sk=sq?["size","qty","cutQty"]:["size","qty"]; var sp=sq?["사이즈","수량",q4]:["사이즈","수량"];
+        sk.forEach(function(k,ci){
+          if(k==="size"){
+            var ss=document.createElement("select"); ss.style.cssText="font-size:12px;padding:6px 4px;width:100%;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text);font-family:inherit;";
+            SIZES.forEach(function(sz){ var o=document.createElement("option"); o.value=sz; o.textContent=sz||"사이즈"; if(v[k]===sz) o.selected=true; ss.appendChild(o); });
+            ss.addEventListener("change",function(){ v[k]=ss.value; }); row.appendChild(ss);
+          } else {
+            var inp=document.createElement("input"); inp.type="text"; inp.placeholder=sp[ci]; inp.value=v[k]||""; inp.addEventListener("input",function(){ v[k]=inp.value; }); row.appendChild(inp);
+          }
+        });
+      } else {
+        var ck=sq?["color","size","qty","cutQty"]:["color","size","qty"]; var cp=sq?["컬러","사이즈","수량",q4]:["컬러","사이즈","수량"];
+        ck.forEach(function(k,ci){
+          if(k==="size"){
+            var ss=document.createElement("select"); ss.style.cssText="font-size:12px;padding:6px 4px;width:100%;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text);font-family:inherit;";
+            SIZES.forEach(function(sz){ var o=document.createElement("option"); o.value=sz; o.textContent=sz||"사이즈"; if(v[k]===sz) o.selected=true; ss.appendChild(o); });
+            ss.addEventListener("change",function(){ v[k]=ss.value; }); row.appendChild(ss);
+          } else {
+            var inp=document.createElement("input"); inp.type="text"; inp.placeholder=cp[ci]; inp.value=v[k]||""; inp.addEventListener("input",function(){ v[k]=inp.value; });
+            if(k==="color") inp.addEventListener("blur",function(){ renderVariantRows(); }); row.appendChild(inp);
+          }
+        });
+      }
+      var rmBtn=document.createElement("button"); rmBtn.className="icon-btn"; rmBtn.textContent="✕"; rmBtn.disabled=variants.length===1;
+      rmBtn.addEventListener("click",function(){ if(variants.length===1) return; variants.splice(idx,1); renderVariantRows(); });
+      row.appendChild(rmBtn); variantListEl.appendChild(row);
     });
-    ltWrap.appendChild(ltSel); formWrap.appendChild(ltWrap);
+  }
+  function renderProductionFields(){
+    mkField("업체명","company",recordPicked?pickedCompany:(isEdit?ev.company:""));
+    mkField("상품명","item",recordPicked?pickedItem:(isEdit?ev.item:""));
+    var csl=fields.stage?fields.stage.value:""; var sq4=(csl!=="instruct");
+    var vLabel=document.createElement("div"); vLabel.className="variant-row";
+    vLabel.style.gridTemplateColumns=sq4?"1fr 1fr 0.8fr 0.8fr 26px":"1fr 1fr 0.9fr 26px"; vLabel.style.marginBottom="4px";
+    var hl=sq4?["컬러","사이즈","수량",(csl==="completed"||csl==="completed_p")?"입고수량":"예정수량"]:["컬러","사이즈","수량"];
+    hl.forEach(function(t){ var lab=document.createElement("div"); lab.className="field-label"; lab.style.margin="0"; lab.textContent=t; vLabel.appendChild(lab); });
+    vLabel.appendChild(document.createElement("div")); formWrap.appendChild(vLabel);
+    variantListEl=document.createElement("div"); formWrap.appendChild(variantListEl); renderVariantRows();
+    var abr=document.createElement("div"); abr.style.cssText="display:flex;gap:6px;margin-top:2px;";
+    var acb=document.createElement("button"); acb.textContent="+ 컬러 추가"; acb.addEventListener("click",function(){ variants.push({type:"color",color:"",size:"",qty:"",cutQty:""}); renderVariantRows(); }); abr.appendChild(acb);
+    var asb=document.createElement("button"); asb.textContent="+ 사이즈 추가"; asb.addEventListener("click",function(){ variants.push({type:"size",size:"",qty:"",cutQty:""}); renderVariantRows(); }); abr.appendChild(asb);
+    formWrap.appendChild(abr);
+  }
+  function renderInstructPicker(sv){
+    var hint=document.createElement("div"); hint.className="field-label"; hint.style.marginBottom="8px"; hint.textContent="투입일로 등록된 기록을 선택하면 업체명·상품명·옵션이 채워집니다."; formWrap.appendChild(hint);
+    var recs=findProductionInstructRecords();
+    if(recs.length===0){ var em=document.createElement("div"); em.className="panel-subtitle"; em.textContent="등록된 투입일 기록이 없습니다."; formWrap.appendChild(em); }
+    else { recs.forEach(function(rec){ var ri=document.createElement("div"); ri.className="panel-list-item"; var rd=document.createElement("div"); rd.className="panel-list-cat"; rd.textContent=fmtDateKorean(rec.date); ri.appendChild(rd); var rm=document.createElement("div"); rm.className="panel-list-main"; rm.textContent=(rec.company||"")+" · "+(rec.item||""); ri.appendChild(rm); ri.addEventListener("click",function(){ pickedCompany=rec.company||""; pickedItem=rec.item||""; variants=rec.variants?parseVariants(rec.variants):[{type:"color",color:"",size:"",qty:"",cutQty:""}]; recordPicked=true; buildForm(fields.stage?fields.stage.value:undefined); }); formWrap.appendChild(ri); }); }
+  }
 
-    // 2. 날짜 영역 컨테이너
-    var dateArea=document.createElement("div"); dateArea.id="pf-leave-date-area"; formWrap.appendChild(dateArea);
-
-    // 3. 성함
-    mkField("성함","item",isEdit?ev.item:"");
-
-    // 날짜 영역 렌더 함수
-    function buildDateArea(){
+  function buildLeaveForm(){
+    var parsed=parseLeaveDesc(isEdit?ev.description:"");
+    // 구분 select
+    var ltw=document.createElement("div"); ltw.className="field";
+    var ltl=document.createElement("div"); ltl.className="field-label"; ltl.textContent="구분"; ltw.appendChild(ltl);
+    var ltSel=document.createElement("select"); ltSel.id="pf-leave-type";
+    ["연차","반차"].forEach(function(opt){ var o=document.createElement("option"); o.value=opt; o.textContent=opt; if(parsed.type===opt) o.selected=true; ltSel.appendChild(o); });
+    ltw.appendChild(ltSel); formWrap.appendChild(ltw);
+    // 날짜 영역
+    var dateArea=document.createElement("div"); formWrap.appendChild(dateArea);
+    function buildLeaveDateArea(){
       dateArea.innerHTML="";
-      var isYeon = ltSel.value==="연차";
-      if(isYeon){
+      if(ltSel.value==="연차"){
         var row=document.createElement("div"); row.style.cssText="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;";
         var sw=document.createElement("div"); sw.style.flex="1";
         var sl=document.createElement("div"); sl.className="field-label"; sl.textContent="시작일"; sw.appendChild(sl);
@@ -959,9 +1025,7 @@ function renderPanelForm(dateStr, ev){
         var ei=document.createElement("input"); ei.type="date"; ei.id="pf-end";
         ei.value=parsed.dateEnd||dateStr;
         ei.style.cssText="width:100%;padding:7px 9px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);";
-        ew.appendChild(ei);
-        row.appendChild(sw); row.appendChild(ar); row.appendChild(ew);
-        dateArea.appendChild(row);
+        ew.appendChild(ei); row.appendChild(sw); row.appendChild(ar); row.appendChild(ew); dateArea.appendChild(row);
       } else {
         var dl=document.createElement("div"); dl.className="field-label"; dl.textContent="날짜"; dateArea.appendChild(dl);
         var di=document.createElement("input"); di.type="date"; di.id="pf-start"; di.value=isEdit?ev.date:dateStr;
@@ -969,103 +1033,41 @@ function renderPanelForm(dateStr, ev){
         dateArea.appendChild(di);
       }
     }
-    buildDateArea();
-    ltSel.addEventListener("change", function(){ buildDateArea(); });
+    buildLeaveDateArea();
+    ltSel.addEventListener("change",function(){ buildLeaveDateArea(); });
+    // 성함
+    mkField("성함","item",isEdit?ev.item:"");
   }
 
   function buildForm(forcedStage){
     formWrap.innerHTML=""; fields={};
+    isRangeCat = RANGE_CATS.indexOf(cat) !== -1;
+
     if(cat==="leave"){
       buildLeaveForm();
+
     } else if(cat==="production"){
       var is=forcedStage!==undefined?forcedStage:(isEdit?ev.stage:getStages(cat)[0].value);
       mkStage(is);
-      mkDate("날짜","pf-start",isEdit?ev.date:dateStr);
+      mkSingleDate(isEdit?ev.date:dateStr);
       var cs=fields.stage?fields.stage.value:is;
       if(cs!=="instruct"&&!isEdit&&!recordPicked){ renderInstructPicker(cs); }
       else { renderProductionFields(); }
+
     } else if(cat==="shoot"){
       mkStage(isEdit?ev.stage:getStages(cat)[0].value);
-      mkDate("날짜","pf-start",isEdit?ev.date:dateStr);
+      mkSingleDate(isEdit?ev.date:dateStr);
       mkField("업체명","company",isEdit?ev.company:""); mkField("상품명","item",isEdit?ev.item:"");
+
     } else {
-      // 날짜 범위 (시작일 ~ 종료일)
+      // 날짜 범위 카테고리 (important, team, other, members)
       var savedEnd = isEdit ? getEventDateEnd(ev) : "";
-      mkDateRange(isEdit?ev.date:dateStr, savedEnd||"");
-      mkField("제목","item",isEdit?ev.item:""); mkField("내용","description",isEdit?ev.description:"",true);
+      mkDateRange(isEdit?ev.date:dateStr, savedEnd);
+      mkField("제목","item",isEdit?ev.item:"");
+      // description에서 ||날짜 부분 제거하고 순수 내용만 표시
+      mkField("내용","description",isEdit?getEventDesc(ev):"",true);
     }
   }
-
-  function renderProductionFields(){
-    mkField("업체명","company",recordPicked?pickedCompany:(isEdit?ev.company:""));
-    mkField("상품명","item",recordPicked?pickedItem:(isEdit?ev.item:""));
-    var csl=fields.stage?fields.stage.value:"";
-    var sq4=csl!=="instruct";
-    var vLabel=document.createElement("div"); vLabel.className="variant-row";
-    vLabel.style.gridTemplateColumns=sq4?"1fr 1fr 0.8fr 0.8fr 26px":"1fr 1fr 0.9fr 26px";
-    vLabel.style.marginBottom="4px";
-    var hl=sq4?["컬러","사이즈","수량",(csl==="completed"||csl==="completed_p")?"입고수량":"예정수량"]:["컬러","사이즈","수량"];
-    hl.forEach(function(t){ var lab=document.createElement("div"); lab.className="field-label"; lab.style.margin="0"; lab.textContent=t; vLabel.appendChild(lab); });
-    vLabel.appendChild(document.createElement("div")); formWrap.appendChild(vLabel);
-    variantListEl=document.createElement("div"); formWrap.appendChild(variantListEl); renderVariantRows();
-    var abr=document.createElement("div"); abr.style.cssText="display:flex;gap:6px;margin-top:2px;";
-    var acb=document.createElement("button"); acb.textContent="+ 컬러 추가"; acb.addEventListener("click",function(){ variants.push({type:"color",color:"",size:"",qty:"",cutQty:""}); renderVariantRows(); }); abr.appendChild(acb);
-    var asb=document.createElement("button"); asb.textContent="+ 사이즈 추가"; asb.addEventListener("click",function(){ variants.push({type:"size",size:"",qty:"",cutQty:""}); renderVariantRows(); }); abr.appendChild(asb);
-    formWrap.appendChild(abr);
-  }
-  function renderVariantRows(){
-    variantListEl.innerHTML="";
-    var co=variants.filter(function(v){ return v.type!=="size"&&v.color; }).map(function(v){ return v.color; });
-    var uc=co.filter(function(c,i){ return co.indexOf(c)===i; });
-    var sv=fields.stage?fields.stage.value:"";
-    var q4=(sv==="completed"||sv==="completed_p")?"입고수량":"예정수량";
-    variants.forEach(function(v,idx){
-      var row=document.createElement("div"); row.className="variant-row";
-      var sq=sv!=="instruct";
-      row.style.gridTemplateColumns=sq?"1fr 1fr 0.8fr 0.8fr 26px":"1fr 1fr 0.9fr 26px";
-      if(v.type==="size"){
-        var sel=document.createElement("select"); sel.style.fontSize="12px"; sel.style.padding="6px 4px";
-        var ph=document.createElement("option"); ph.value=""; ph.textContent="컬러 선택"; sel.appendChild(ph);
-        uc.forEach(function(c){ var o=document.createElement("option"); o.value=c; o.textContent=c; if(v.parentColor===c) o.selected=true; sel.appendChild(o); });
-        sel.addEventListener("change",function(){ v.parentColor=sel.value; }); row.appendChild(sel);
-        var sk=sq?["size","qty","cutQty"]:["size","qty"];
-        var sp=sq?["사이즈","수량",q4]:["사이즈","수량"];
-        var SIZES2=["","F","XXS","XS","S","M","L","XL","XXL"];
-        sk.forEach(function(k,ci){
-          if(k==="size"){
-            var sel=document.createElement("select"); sel.style.cssText="font-size:12px;padding:6px 4px;width:100%;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text);font-family:inherit;";
-            SIZES2.forEach(function(sz){ var o=document.createElement("option"); o.value=sz; o.textContent=sz||"사이즈"; if(v[k]===sz) o.selected=true; sel.appendChild(o); });
-            sel.addEventListener("change",function(){ v[k]=sel.value; }); row.appendChild(sel);
-          } else {
-            var inp=document.createElement("input"); inp.type="text"; inp.placeholder=sp[ci]; inp.value=v[k]||""; inp.addEventListener("input",function(){ v[k]=inp.value; }); row.appendChild(inp);
-          }
-        });
-      } else {
-        var ck=sq?["color","size","qty","cutQty"]:["color","size","qty"];
-        var cp=sq?["컬러","사이즈","수량",q4]:["컬러","사이즈","수량"];
-        var SIZES=["","F","XXS","XS","S","M","L","XL","XXL"];
-        ck.forEach(function(k,ci){
-          if(k==="size"){
-            var sel=document.createElement("select"); sel.style.cssText="font-size:12px;padding:6px 4px;width:100%;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text);font-family:inherit;";
-            SIZES.forEach(function(sz){ var o=document.createElement("option"); o.value=sz; o.textContent=sz||"사이즈"; if(v[k]===sz) o.selected=true; sel.appendChild(o); });
-            sel.addEventListener("change",function(){ v[k]=sel.value; }); row.appendChild(sel);
-          } else {
-            var inp=document.createElement("input"); inp.type="text"; inp.placeholder=cp[ci]; inp.value=v[k]||""; inp.addEventListener("input",function(){ v[k]=inp.value; }); if(k==="color") inp.addEventListener("blur",function(){ renderVariantRows(); }); row.appendChild(inp);
-          }
-        });
-      }
-      var rmBtn=document.createElement("button"); rmBtn.className="icon-btn"; rmBtn.textContent="✕"; rmBtn.disabled=variants.length===1;
-      rmBtn.addEventListener("click",function(){ if(variants.length===1) return; variants.splice(idx,1); renderVariantRows(); });
-      row.appendChild(rmBtn); variantListEl.appendChild(row);
-    });
-  }
-  function renderInstructPicker(sv){
-    var hint=document.createElement("div"); hint.className="field-label"; hint.style.marginBottom="8px"; hint.textContent="투입일로 등록된 기록을 선택하면 업체명·상품명·옵션이 채워집니다."; formWrap.appendChild(hint);
-    var recs=findProductionInstructRecords();
-    if(recs.length===0){ var em=document.createElement("div"); em.className="panel-subtitle"; em.textContent="등록된 투입일 기록이 없습니다."; formWrap.appendChild(em); }
-    else { recs.forEach(function(rec){ var ri=document.createElement("div"); ri.className="panel-list-item"; var rd=document.createElement("div"); rd.className="panel-list-cat"; rd.textContent=fmtDateKorean(rec.date); ri.appendChild(rd); var rm=document.createElement("div"); rm.className="panel-list-main"; rm.textContent=(rec.company||"")+" · "+(rec.item||""); ri.appendChild(rm); ri.addEventListener("click",function(){ pickedCompany=rec.company||""; pickedItem=rec.item||""; variants=rec.variants?parseVariants(rec.variants):[{type:"color",color:"",size:"",qty:"",cutQty:""}]; recordPicked=true; buildForm(fields.stage?fields.stage.value:undefined); }); formWrap.appendChild(ri); }); }
-  }
-
   buildForm();
 
   // 저장 버튼
@@ -1082,39 +1084,37 @@ function renderPanelForm(dateStr, ev){
   var cancelBtn=document.createElement("button"); cancelBtn.textContent="취소"; cancelBtn.addEventListener("click",function(){ renderPanelList(dateStr); }); rightBtns.appendChild(cancelBtn);
   var saveBtn=document.createElement("button"); saveBtn.className="primary"; saveBtn.textContent="저장";
   saveBtn.addEventListener("click",function(){
-    // DOM에서 직접 읽기 (클로저 의존 없음)
     var startEl = document.getElementById("pf-start");
     var endEl   = document.getElementById("pf-end");
     var typeEl  = document.getElementById("pf-leave-type");
-    if(!startEl){ showToast("날짜를 입력해주세요."); return; }
+    if(!startEl||!startEl.value){ showToast("날짜를 입력해주세요."); return; }
+
     var startVal = startEl.value;
     var endVal   = endEl ? endEl.value : "";
-    var leaveType = typeEl ? typeEl.value : "";
 
-    // 연차 description 인코딩: "연차||종료일" 또는 "반차"
+    // description 결정
     var descVal;
     if(cat==="leave"){
-      descVal = (leaveType==="연차" && endVal && endVal !== startVal) ? leaveType+"||"+endVal : leaveType;
+      var lt = typeEl ? typeEl.value : "연차";
+      descVal = (lt==="연차" && endVal && endVal !== startVal) ? lt+"||"+endVal : lt;
+    } else if(cat!=="production" && cat!=="shoot" && endVal && endVal !== startVal){
+      // 범위 카테고리: "내용||종료일" 형식으로 인코딩
+      var rawDesc = fields.description ? fields.description.value : "";
+      descVal = rawDesc + "||" + endVal;
     } else {
       descVal = fields.description ? fields.description.value : "";
     }
 
-    // non-leave, non-production/shoot 카테고리: company에 dateEnd 저장
-    if (cat !== "leave" && cat !== "production" && cat !== "shoot") {
-      var endElForSave = document.getElementById("pf-end");
-      if (endElForSave && endElForSave.value) {
-        // company 필드를 dateEnd로 사용 (이 카테고리들은 업체명 없음)
-        // fields.company가 없으므로 payload에서 직접 처리
-      }
-    }
-    // 파샬/전체 선택 반영해 stage 합성
+    // stage 결정 (production 파샬)
     var finalStage = fields.stage ? fields.stage.value : "";
     if(cat==="production" && (finalStage==="expected"||finalStage==="completed")){
-      var partialRadio = document.querySelector('input[name="pf-partial"]:checked');
-      var partialCheck = document.getElementById("pf-partial-파샬");
-      var isP = (partialRadio&&partialRadio.value==="파샬") || (partialCheck&&partialCheck.checked);
-      if(isP) finalStage = finalStage + "_p";
+      var pr = document.querySelector('input[name="pf-partial"]:checked');
+      var pc = document.getElementById("pf-partial-파샬");
+      if((pr&&pr.value==="파샬")||(pc&&pc.checked)) finalStage = finalStage+"_p";
     }
+
+    // company 결정
+    var companyVal = (cat==="production"||cat==="shoot") ? (fields.company?fields.company.value:"") : "";
 
     saveBtn.disabled=true; saveBtn.textContent="저장 중...";
     var payload={
@@ -1122,7 +1122,7 @@ function renderPanelForm(dateStr, ev){
       date:startVal,
       category:cat,
       stage:finalStage,
-      company:(cat!=="leave"&&cat!=="production"&&cat!=="shoot")?(document.getElementById("pf-end")?document.getElementById("pf-end").value:""):(fields.company?fields.company.value:""),
+      company:companyVal,
       item:fields.item?fields.item.value:"",
       imageUrl:isEdit?(ev.imageUrl||""):"",
       variants:cat==="production"?stringifyVariants(variants):"",
@@ -1140,13 +1140,22 @@ function refreshAllAndShowList(dateStr){
   Promise.all([loadEvents(), loadHolidays(view.year, view.month)]).then(function(){ render(); renderPanelList(dateStr); });
 }
 function getEventDateEnd(ev){
-  // leave: description 인코딩에서 추출
-  if (ev.category === "leave") return parseLeaveDesc(ev.description).dateEnd || "";
-  // production/shoot: company = 업체명이므로 dateEnd 없음
   if (ev.category === "production" || ev.category === "shoot") return "";
-  // 나머지: company 필드에 종료일 저장
-  var c = ev.company || "";
-  return (c && /^\d{4}-\d{2}-\d{2}$/.test(String(c))) ? c : "";
+  // description에서 "||날짜" 패턴으로 종료일 추출
+  var desc = ev.description || "";
+  var sepIdx = desc.lastIndexOf("||");
+  if (sepIdx === -1) return "";
+  var after = desc.substring(sepIdx + 2);
+  return /^\d{4}-\d{2}-\d{2}$/.test(after) ? after : "";
+}
+function getEventDesc(ev){
+  // description에서 종료일 인코딩 제거, 순수 내용만 반환
+  var desc = ev.description || "";
+  var sepIdx = desc.lastIndexOf("||");
+  if (sepIdx === -1) return desc;
+  var after = desc.substring(sepIdx + 2);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(after)) return desc.substring(0, sepIdx);
+  return desc;
 }
 function calcRemainingVariants(variantStr){
   // 파샬 입고 후 잔여수량 계산: qty - cutQty
