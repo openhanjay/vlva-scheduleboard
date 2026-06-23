@@ -150,8 +150,8 @@
   .panel-back-btn:hover { color: var(--color-text); background: none; }
 
   h2.panel-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
-  .cat-row { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
-  .cat-btn { padding: 5px 10px; font-size: 12px; border-radius: var(--radius-md); border: 1px solid var(--color-border); background: var(--color-bg); cursor: pointer; }
+  .cat-row { display: flex; gap: 4px; margin-bottom: 14px; flex-wrap: nowrap; overflow-x: auto; }
+  .cat-btn { padding: 4px 7px; font-size: 11px; border-radius: var(--radius-md); border: 1px solid var(--color-border); background: var(--color-bg); cursor: pointer; white-space: nowrap; }
   .field-label { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px; }
   .field { margin-bottom: 10px; }
   .field input, .field textarea, .field select {
@@ -182,19 +182,25 @@
     <div class="topbar">
       <div class="topbar-title-row">
         <div class="topbar-left">
-          <h1 style="margin:0;display:flex;align-items:center;gap:4px;font-size:26px;font-weight:700;letter-spacing:-0.5px;">
-            <select id="year-select" style="font-family:inherit;font-size:26px;font-weight:700;letter-spacing:-0.5px;border:none;background:transparent;cursor:pointer;color:var(--color-text);padding:0 2px;appearance:auto;"></select>
-            <select id="month-select" style="font-family:inherit;font-size:26px;font-weight:700;letter-spacing:-0.5px;border:none;background:transparent;cursor:pointer;color:var(--color-text);padding:0 2px;appearance:auto;"></select>
-          </h1>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <h1 style="margin:0;display:flex;align-items:center;gap:4px;font-size:26px;font-weight:700;letter-spacing:-0.5px;white-space:nowrap;">
+              <select id="year-select" style="font-family:inherit;font-size:26px;font-weight:700;letter-spacing:-0.5px;border:none;background:transparent;cursor:pointer;color:var(--color-text);padding:0 2px;appearance:auto;"></select>
+              <select id="month-select" style="font-family:inherit;font-size:26px;font-weight:700;letter-spacing:-0.5px;border:none;background:transparent;cursor:pointer;color:var(--color-text);padding:0 2px;appearance:auto;"></select>
+            </h1>
+            <input id="month-memo" type="text" placeholder="이달의 프로모션 / 이벤트 메모..."
+              style="font-family:inherit;font-size:15px;font-weight:700;color:var(--color-text);border:none;border-bottom:1.5px solid var(--color-border);background:transparent;padding:4px 2px;width:260px;outline:none;"
+              onfocus="this.style.borderBottomColor='var(--color-text)'"
+              onblur="this.style.borderBottomColor='var(--color-border)'" />
+          </div>
         </div>
         <div class="topbar-right">
           <div class="legend">
+            <div class="legend-item"><span class="dot" style="background:#39FF14;"></span>중요일정</div>
+            <div class="legend-item"><span class="dot" style="background:#E4E212;"></span>팀 일정</div>
+            <div class="legend-item"><span class="dot" style="background:#B3D9FF;"></span>타부서</div>
             <div class="legend-item"><span class="dot" style="background:#E24B4A;"></span>메인</div>
             <div class="legend-item"><span class="dot" style="background:#26A69A;"></span>샘플</div>
             <div class="legend-item"><span class="dot" style="background:#EF9F27;"></span>연차</div>
-            <div class="legend-item"><span class="dot" style="background:#39FF14;"></span>중요일정</div>
-            <div class="legend-item"><span class="dot" style="background:#FFE000;"></span>팀 일정</div>
-            <div class="legend-item"><span class="dot" style="background:#B3D9FF;"></span>타부서</div>
           </div>
           <button id="prev-btn">&#9666;</button>
           <button id="today-btn">오늘</button>
@@ -228,12 +234,12 @@
 var API_URL = "https://script.google.com/macros/s/AKfycbw7isRxme_nzrVS-hQf_IttVR04o2tfSmyFPx_9qrtPAmImot1c_ZmO50LV5lkOLxuj8A/exec";
 
 var CATS = {
-  production: { label: "메인",    color: "#E24B4A", bg: "#FCEBEB", text: "#791F1F", text2: "#A32D2D" },
-  shoot:       { label: "샘플",    color: "#26A69A", bg: "#E0F2F1", text: "#004D40" },
-  leave:       { label: "연차",    color: "#EF9F27", bg: "#FAEEDA", text: "#633806" },
   important:   { label: "중요일정", color: "#39FF14", bg: "#EDFFD6", text: "#1A6600" },
-  team:        { label: "팀 일정", color: "#FFE000", bg: "#FFFBE0", text: "#6B5000" },
-  other:       { label: "타부서",  color: "#B3D9FF", bg: "#F0F8FF", text: "#1a1a18" }
+  team:        { label: "팀 일정", color: "#E4E212", bg: "#FAFAD2", text: "#3D3A00" },
+  other:       { label: "타부서",  color: "#B3D9FF", bg: "#F0F8FF", text: "#1a1a18" },
+  production:  { label: "메인",    color: "#E24B4A", bg: "#FCEBEB", text: "#791F1F", text2: "#A32D2D" },
+  shoot:       { label: "샘플",    color: "#26A69A", bg: "#E0F2F1", text: "#004D40" },
+  leave:       { label: "연차",    color: "#EF9F27", bg: "#FAEEDA", text: "#633806" }
 };
 
 var MEMBERS = {
@@ -1219,6 +1225,10 @@ document.getElementById("prev-btn").addEventListener("click",function(){ view.mo
 document.getElementById("next-btn").addEventListener("click",function(){ view.month++; if(view.month>11){view.month=0;view.year++;} refreshAll(); });
 document.getElementById("today-btn").addEventListener("click",function(){ view.year=today.getFullYear(); view.month=today.getMonth(); refreshAll(); });
 document.getElementById("refresh-btn").addEventListener("click",refreshAll);
+document.getElementById("month-memo").addEventListener("input", function(){
+  var memoKey = "memo_" + view.year + "_" + view.month;
+  localStorage.setItem(memoKey, this.value);
+});
 
 // 년도/월 select 초기화
 (function(){
@@ -1236,6 +1246,10 @@ document.getElementById("refresh-btn").addEventListener("click",refreshAll);
 function syncSelects(){
   document.getElementById("year-select").value = String(view.year);
   document.getElementById("month-select").value = String(view.month);
+  // 월별 메모 불러오기
+  var memoKey = "memo_" + view.year + "_" + view.month;
+  var memoEl = document.getElementById("month-memo");
+  if(memoEl) memoEl.value = localStorage.getItem(memoKey) || "";
 }
 document.getElementById("year-select").addEventListener("change", function(){
   view.year = parseInt(this.value); refreshAll();
