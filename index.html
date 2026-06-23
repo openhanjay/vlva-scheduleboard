@@ -211,13 +211,10 @@
         <div class="topbar-right">
           <div class="legend">
             <div class="legend-item"><span class="dot" style="background:#39FF14;"></span>중요일정</div>
-            <div class="legend-item"><span class="dot" style="background:#E24B4A;"></span>메인</div>
-            <div class="legend-item"><span class="dot" style="background:#26A69A;"></span>샘플</div>
-            <div class="legend-item"><span class="dot" style="background:#1E88E5;"></span>컨텐츠</div>
+            <div class="legend-item"><span class="dot" style="background:#E4E212;"></span>운영</div>
+            <div class="legend-item"><span class="dot" style="background:#E24B4A;"></span>상품</div>
             <div class="legend-item"><span class="dot" style="background:#43A047;"></span>커머스</div>
-            <div class="legend-item"><span class="dot" style="background:#E4E212;"></span>팀 일정</div>
-            <div class="legend-item"><span class="dot" style="background:#B3D9FF;"></span>타부서</div>
-
+            <div class="legend-item"><span class="dot" style="background:#1E88E5;"></span>컨텐츠</div>
           </div>
           <button id="prev-btn">&#9666;</button>
           <button id="today-btn">오늘</button>
@@ -254,19 +251,21 @@ var API_URL = "https://script.google.com/macros/s/AKfycbw7isRxme_nzrVS-hQf_IttVR
 var CATS = {
   important:   { label: "중요일정", color: "#39FF14", bg: "#C8FFB0", text: "#1A6600" },
   production:  { label: "메인",     color: "#E24B4A", bg: "#FFCCCC", text: "#791F1F", text2: "#A32D2D" },
-  shoot:       { label: "샘플",     color: "#26A69A", bg: "#A8E6E1", text: "#004D40" },
+  shoot:       { label: "샘플",     color: "#E24B4A", bg: "#FFCCCC", text: "#791F1F" },
+  prodetc:     { label: "기타",     color: "#E24B4A", bg: "#FFCCCC", text: "#791F1F" },
   content:     { label: "컨텐츠",   color: "#1E88E5", bg: "#BBDEFB", text: "#0D47A1" },
   commerce:    { label: "커머스",   color: "#43A047", bg: "#C8E6C9", text: "#1B5E20" },
   team:        { label: "팀 일정",  color: "#E4E212", bg: "#F5F59A", text: "#3D3A00" },
-  other:       { label: "타부서",   color: "#B3D9FF", bg: "#C8E8FF", text: "#1a1a18" },
+  other:       { label: "타부서",   color: "#E4E212", bg: "#F5F59A", text: "#3D3A00" },
+  opetc:       { label: "기타",     color: "#E4E212", bg: "#F5F59A", text: "#3D3A00" },
   leave:       { label: "연차",     color: "#EF9F27", bg: "#FFDDA0", text: "#633806" }
 };
 
 // 카테고리 그룹 구조
 var GROUPS = [
   { key: "important", label: "중요일정", color: "#39FF14", bg: "#C8FFB0", text: "#1A6600", subCats: [] },
-  { key: "operation", label: "운영",     color: "#E4E212", bg: "#F5F59A", text: "#3D3A00", subCats: ["team","other"] },
-  { key: "product",   label: "상품",     color: "#E24B4A", bg: "#FFCCCC", text: "#791F1F", subCats: ["production","shoot"] },
+  { key: "operation", label: "운영",     color: "#E4E212", bg: "#F5F59A", text: "#3D3A00", subCats: ["team","other","opetc"] },
+  { key: "product",   label: "상품",     color: "#E24B4A", bg: "#FFCCCC", text: "#791F1F", subCats: ["production","shoot","prodetc"] },
   { key: "commerce",  label: "커머스",   color: "#43A047", bg: "#C8E6C9", text: "#1B5E20", subCats: [] },
   { key: "content",   label: "컨텐츠",   color: "#1E88E5", bg: "#BBDEFB", text: "#0D47A1", subCats: [] }
 ];
@@ -488,17 +487,13 @@ function buildCell(dateStr, dayLabel, isOutside){
       if(isFirst){
         var sp=document.createElement("span");
         sp.style.cssText="font-size:11px;font-weight:500;color:"+c.text+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;";
-        var mi=MEMBERS[activeEv.category];
-        sp.textContent=mi?mi.label+(activeEv.item?" · "+activeEv.item:""):(activeEv.item||"");
+        sp.textContent = getCalDisplayText(activeEv);
         bar.appendChild(sp);
       }
       (function(ev,ds){ bar.addEventListener("click",function(e){ e.stopPropagation(); selectedDate=ds; render(); renderPanelList(ds); }); })(activeEv,dateStr);
       cell.appendChild(bar);
-    } else {
-      var spacer=document.createElement("div");
-      spacer.style.cssText="height:"+BAR_H+"px;margin-bottom:3px;flex-shrink:0;";
-      cell.appendChild(spacer);
     }
+    // spacer 없음: 바가 없는 셀은 단일 이벤트가 바로 위에 표시
   }
 
   } catch(laneErr){ console.error("Lane render error:", laneErr); }
@@ -526,10 +521,8 @@ function buildCell(dateStr, dayLabel, isOutside){
       textCol.appendChild(line1); card.appendChild(textCol);
     } else {
       var txt=document.createElement("div"); txt.className="event-title"; txt.style.color=c.text;
-      var displayText=ev.item||"";
-      if(ev.category==="leave"){ var cld=parseLeaveDesc(ev.description); if(cld.type) displayText+=" · "+cld.type; }
-      else if(MEMBERS[ev.category]) displayText=MEMBERS[ev.category].label+(ev.item?" · "+ev.item:"");
-      txt.textContent=displayText; card.appendChild(txt);
+      txt.textContent = getCalDisplayText(ev);
+      card.appendChild(txt);
     }
     cell.appendChild(card);
   });
@@ -1145,7 +1138,7 @@ function renderPanelForm(dateStr, ev){
   panel.innerHTML = "";
 
   // 날짜범위 카테고리 (시작일~종료일) / 단일 날짜 카테고리
-  var RANGE_CATS = ["leave","important","team","other","content","commerce","kevin","mendi","alex","sena","lion","jay"];
+  var RANGE_CATS = ["leave","important","team","other","opetc","content","commerce","prodetc","kevin","mendi","alex","sena","lion","jay"];
   var isRangeCat = RANGE_CATS.indexOf(cat) !== -1;
 
   var backBtn = document.createElement("button"); backBtn.className = "panel-back-btn"; backBtn.textContent = "← 목록으로";
@@ -1485,6 +1478,26 @@ function renderPanelForm(dateStr, ev){
 
 function refreshAllAndShowList(dateStr){
   loadAllData(view.year, view.month).then(function(){ renderCurrentView(); renderPanelList(dateStr); renderMemberPanel(); });
+}
+// 캘린더 표시 텍스트: 운영/상품 그룹은 "서브카테고리 - 제목", 나머지는 제목만
+var PROD_CATS = ["production","shoot","prodetc"];
+var OP_CATS   = ["team","other","opetc"];
+function getCalDisplayText(ev){
+  var c = CATS[ev.category] || MEMBERS[ev.category] || CATS.other;
+  var title = ev.item || "";
+  if(ev.category === "leave"){
+    var cld = parseLeaveDesc(ev.description);
+    return (cld.type||"연차") + (title?" - "+title:"");
+  }
+  if(MEMBERS[ev.category]){
+    return c.label + (title?" - "+title:"");
+  }
+  // 운영/상품 그룹: 서브카테고리명 - 제목
+  if(PROD_CATS.indexOf(ev.category)!==-1 || OP_CATS.indexOf(ev.category)!==-1){
+    return c.label + (title?" - "+title:"");
+  }
+  // 중요일정/커머스/컨텐츠: 제목만
+  return title;
 }
 function getEventDateEnd(ev){
   if (ev.category === "production" || ev.category === "shoot") return "";
