@@ -213,7 +213,7 @@
     <div class="calendar-card">
       <div class="weekday-row" id="weekday-row"></div>
       <div class="grid" id="grid">
-        <div class="loading-text"><span class="spinner-inline"></span>일정을 불러오는 중...</div>
+
       </div>
     </div>
   </div>
@@ -310,14 +310,57 @@ function apiGet(action, extraParams){
 function apiPost(body){
   return fetch(API_URL, { method: "POST", body: JSON.stringify(body) }).then(function(r){ return r.json(); });
 }
+var EVENTS_CACHE_KEY = "vlvd_events_cache";
+var EVENTS_CACHE_TTL = 30 * 60 * 1000; // 30분
+
 function loadEvents(){
-  return apiGet("events").then(function(data){ events = data.events || []; }).catch(function(err){
-    showToast("일정을 불러오지 못했습니다. API 주소를 확인해주세요."); console.error(err);
+  // 캐시 확인
+  try {
+    var cached = localStorage.getItem(EVENTS_CACHE_KEY);
+    if (cached) {
+      var obj = JSON.parse(cached);
+      if (Date.now() - obj.ts < EVENTS_CACHE_TTL) {
+        events = obj.data;
+        return Promise.resolve(); // 캐시 히트 - 즉시 반환
+      }
+    }
+  } catch(e) {}
+
+  // 캐시 없거나 만료 - API 호출
+  return apiGet("events").then(function(data){
+    events = data.events || [];
+    try {
+      localStorage.setItem(EVENTS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: events }));
+    } catch(e) {}
+  }).catch(function(err){
+    // API 실패 시 만료된 캐시라도 사용
+    try {
+      var cached = localStorage.getItem(EVENTS_CACHE_KEY);
+      if (cached) events = JSON.parse(cached).data || [];
+    } catch(e) {}
+    console.error(err);
   });
 }
+
+function clearEventsCache(){
+  try { localStorage.removeItem(EVENTS_CACHE_KEY); } catch(e) {}
+}
 function loadHolidays(year, month){
+  var hKey = "vlvd_holidays_" + year + "_" + (month+1);
+  // 공휴일은 한 달간 캐시
+  try {
+    var cached = localStorage.getItem(hKey);
+    if (cached) {
+      var obj = JSON.parse(cached);
+      obj.data.forEach(function(h){ holidays[h.date] = h.name; });
+      return Promise.resolve();
+    }
+  } catch(e) {}
+
   return apiGet("holidays", { year: year, month: month + 1 }).then(function(data){
-    (data.holidays || []).forEach(function(h){ holidays[h.date] = h.name; });
+    var list = data.holidays || [];
+    list.forEach(function(h){ holidays[h.date] = h.name; });
+    try { localStorage.setItem(hKey, JSON.stringify({ data: list })); } catch(e) {}
   }).catch(function(){});
 }
 function buildCell(dateStr, dayLabel, isOutside){
@@ -699,14 +742,64 @@ function autoFillRecurring(){
 }
 
 function refreshAll(){
-  grid.innerHTML = '<div class="loading-text"><span class="spinner-inline"></span>일정을 불러오는 중...</div>';
-  Promise.all([loadEvents(), loadHolidays(view.year, view.month)]).then(function(){
+  // 즉시 캘린더 그리드 렌더 (빈 상태로 먼저 표시)
+  render();
+  renderMemberPanel();
+
+  // 캐시 데이터 있으면 즉시 반영
+  try {
+    var cached = localStorage.getItem(EVENTS_CACHE_KEY);
+    if (cached) {
+      var obj = JSON.parse(cached);
+      if (Date.now() - obj.ts < EVENTS_CACHE_TTL) {
+        events = obj.data;
+        render();
+        if (selectedDate) renderPanelList(selectedDate);
+        renderMemberPanel();
+      }
+    }
+  } catch(e) {}
+
+  // API: events + holidays 동시 1회 호출 (combined)
+  loadAllData(view.year, view.month).then(function(){
     render();
     if (selectedDate) renderPanelList(selectedDate);
     renderMemberPanel();
-    // 반복일정 자동 보충 (백그라운드)
     autoFillRecurring();
   });
+}
+
+function loadAllData(year, month){
+  var hKey = "vlvd_holidays_" + year + "_" + (month+1);
+  var holidaysCached = false;
+  try {
+    var hc = localStorage.getItem(hKey);
+    if (hc) {
+      JSON.parse(hc).data.forEach(function(h){ holidays[h.date] = h.name; });
+      holidaysCached = true;
+    }
+  } catch(e) {}
+
+  // events는 항상 최신으로, holidays는 캐시 없을 때만 API 호출
+  var fetchEvents = apiGet("events").then(function(data){
+    events = data.events || [];
+    try { localStorage.setItem(EVENTS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: events })); } catch(e) {}
+  }).catch(function(err){
+    try {
+      var c = localStorage.getItem(EVENTS_CACHE_KEY);
+      if (c) events = JSON.parse(c).data || [];
+    } catch(e) {}
+  });
+
+  if (holidaysCached) return fetchEvents;
+
+  var fetchHolidays = apiGet("holidays", { year: year, month: month + 1 }).then(function(data){
+    var list = data.holidays || [];
+    list.forEach(function(h){ holidays[h.date] = h.name; });
+    try { localStorage.setItem(hKey, JSON.stringify({ data: list })); } catch(e) {}
+  }).catch(function(){});
+
+  return Promise.all([fetchEvents, fetchHolidays]);
 }
 function renderPanelList(dateStr){
   selectedDate = dateStr; panel.innerHTML = "";
@@ -1174,7 +1267,7 @@ function renderPanelForm(dateStr, ev){
 }
 
 function refreshAllAndShowList(dateStr){
-  Promise.all([loadEvents(), loadHolidays(view.year, view.month)]).then(function(){ render(); renderPanelList(dateStr); });
+  loadAllData(view.year, view.month).then(function(){ render(); renderPanelList(dateStr); renderMemberPanel(); });
 }
 function getEventDateEnd(ev){
   if (ev.category === "production" || ev.category === "shoot") return "";
@@ -1224,7 +1317,10 @@ function findProductionInstructRecords(){
 document.getElementById("prev-btn").addEventListener("click",function(){ view.month--; if(view.month<0){view.month=11;view.year--;} refreshAll(); });
 document.getElementById("next-btn").addEventListener("click",function(){ view.month++; if(view.month>11){view.month=0;view.year++;} refreshAll(); });
 document.getElementById("today-btn").addEventListener("click",function(){ view.year=today.getFullYear(); view.month=today.getMonth(); refreshAll(); });
-document.getElementById("refresh-btn").addEventListener("click",refreshAll);
+document.getElementById("refresh-btn").addEventListener("click", function(){
+  clearEventsCache(); // 새로고침은 캐시 무효화
+  refreshAll();
+});
 document.getElementById("month-memo").addEventListener("input", function(){
   var memoKey = "memo_" + view.year + "_" + view.month;
   localStorage.setItem(memoKey, this.value);
