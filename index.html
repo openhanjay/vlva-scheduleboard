@@ -486,7 +486,7 @@ function buildCell(dateStr, dayLabel, isOutside){
       bar.style.cssText="position:relative;left:"+leftOff+";width:"+barW+";height:"+BAR_H+"px;background:"+c.bg+";border-radius:"+brTL+" "+brTR+" "+brBR+" "+brBL+";margin-bottom:3px;overflow:hidden;cursor:pointer;display:flex;align-items:center;padding:0 6px;"+(isFirst?"border-left:2px solid "+c.color+";":"")+"flex-shrink:0;box-sizing:border-box;";
       if(isFirst){
         var sp=document.createElement("span");
-        sp.style.cssText="font-size:11px;font-weight:500;color:"+c.text+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;";
+        sp.style.cssText="font-size:12px;font-weight:500;color:"+c.text+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;";
         sp.textContent = getCalDisplayText(activeEv);
         bar.appendChild(sp);
       }
