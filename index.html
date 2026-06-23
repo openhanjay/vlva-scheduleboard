@@ -211,10 +211,12 @@
         <div class="topbar-right">
           <div class="legend">
             <div class="legend-item"><span class="dot" style="background:#39FF14;"></span>중요일정</div>
-            <div class="legend-item"><span class="dot" style="background:#E4E212;"></span>팀 일정</div>
-            <div class="legend-item"><span class="dot" style="background:#B3D9FF;"></span>타부서</div>
             <div class="legend-item"><span class="dot" style="background:#E24B4A;"></span>메인</div>
             <div class="legend-item"><span class="dot" style="background:#26A69A;"></span>샘플</div>
+            <div class="legend-item"><span class="dot" style="background:#1E88E5;"></span>컨텐츠</div>
+            <div class="legend-item"><span class="dot" style="background:#43A047;"></span>커머스</div>
+            <div class="legend-item"><span class="dot" style="background:#E4E212;"></span>팀 일정</div>
+            <div class="legend-item"><span class="dot" style="background:#B3D9FF;"></span>타부서</div>
             <div class="legend-item"><span class="dot" style="background:#EF9F27;"></span>연차</div>
           </div>
           <button id="prev-btn">&#9666;</button>
@@ -251,12 +253,33 @@ var API_URL = "https://script.google.com/macros/s/AKfycbw7isRxme_nzrVS-hQf_IttVR
 
 var CATS = {
   important:   { label: "중요일정", color: "#39FF14", bg: "#C8FFB0", text: "#1A6600" },
-  team:        { label: "팀 일정", color: "#E4E212", bg: "#F5F59A", text: "#3D3A00" },
-  other:       { label: "타부서",  color: "#B3D9FF", bg: "#C8E8FF", text: "#1a1a18" },
-  production:  { label: "메인",    color: "#E24B4A", bg: "#FFCCCC", text: "#791F1F", text2: "#A32D2D" },
-  shoot:       { label: "샘플",    color: "#26A69A", bg: "#A8E6E1", text: "#004D40" },
-  leave:       { label: "연차",    color: "#EF9F27", bg: "#FFDDA0", text: "#633806" }
+  production:  { label: "메인",     color: "#E24B4A", bg: "#FFCCCC", text: "#791F1F", text2: "#A32D2D" },
+  shoot:       { label: "샘플",     color: "#26A69A", bg: "#A8E6E1", text: "#004D40" },
+  content:     { label: "컨텐츠",   color: "#1E88E5", bg: "#BBDEFB", text: "#0D47A1" },
+  commerce:    { label: "커머스",   color: "#43A047", bg: "#C8E6C9", text: "#1B5E20" },
+  team:        { label: "팀 일정",  color: "#E4E212", bg: "#F5F59A", text: "#3D3A00" },
+  other:       { label: "타부서",   color: "#B3D9FF", bg: "#C8E8FF", text: "#1a1a18" },
+  leave:       { label: "연차",     color: "#EF9F27", bg: "#FFDDA0", text: "#633806" }
 };
+
+// 카테고리 그룹 구조
+var GROUPS = [
+  { key: "important", label: "중요일정", color: "#39FF14", bg: "#C8FFB0", text: "#1A6600", subCats: [] },
+  { key: "product",   label: "상품",     color: "#E24B4A", bg: "#FFCCCC", text: "#791F1F", subCats: ["production","shoot"] },
+  { key: "content",   label: "컨텐츠",   color: "#1E88E5", bg: "#BBDEFB", text: "#0D47A1", subCats: [] },
+  { key: "commerce",  label: "커머스",   color: "#43A047", bg: "#C8E6C9", text: "#1B5E20", subCats: [] },
+  { key: "operation", label: "운영",     color: "#E4E212", bg: "#F5F59A", text: "#3D3A00", subCats: ["team","other"] },
+  { key: "leave",     label: "연차",     color: "#EF9F27", bg: "#FFDDA0", text: "#633806", subCats: [] }
+];
+
+function getGroupByCat(catKey){
+  for(var i=0;i<GROUPS.length;i++){
+    var g=GROUPS[i];
+    if(g.subCats.length===0 && g.key===catKey) return g;
+    if(g.subCats.indexOf(catKey)!==-1) return g;
+  }
+  return GROUPS[0];
+}
 
 var MEMBERS = {
   kevin: { label: "케빈",  color: "#8B9A46", bg: "#EBEBEA", text: "#3D4A00" },
@@ -1081,7 +1104,7 @@ function renderPanelForm(dateStr, ev){
   panel.innerHTML = "";
 
   // 날짜범위 카테고리 (시작일~종료일) / 단일 날짜 카테고리
-  var RANGE_CATS = ["leave","important","team","other","kevin","mendi","alex","sena","lion","jay"];
+  var RANGE_CATS = ["leave","important","team","other","content","commerce","kevin","mendi","alex","sena","lion","jay"];
   var isRangeCat = RANGE_CATS.indexOf(cat) !== -1;
 
   var backBtn = document.createElement("button"); backBtn.className = "panel-back-btn"; backBtn.textContent = "← 목록으로";
