@@ -1653,6 +1653,43 @@ function stringifyVariants(arr){
 function findProductionInstructRecords(){
   return events.filter(function(e){ return e.category==="production"&&e.stage==="instruct"; }).slice().sort(function(a,b){ return a.date<b.date?1:-1; });
 }
+function setWeekdayRow(isGantt){
+  var wr = document.getElementById("weekday-row");
+  wr.innerHTML = "";
+  if(isGantt){
+    // 월 이름으로 교체
+    ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"].forEach(function(m, i){
+      var el = document.createElement("div");
+      el.textContent = m;
+      el.style.cssText = "cursor:pointer;transition:color 0.15s;";
+      el.addEventListener("mouseenter", function(){ el.style.color="var(--color-info)"; });
+      el.addEventListener("mouseleave", function(){ el.style.color=""; });
+      el.addEventListener("click", function(){
+        // 해당 월의 1일까지 스크롤
+        var tl = document.getElementById("g-timeline");
+        if(!tl) return;
+        var YEAR = today.getFullYear();
+        var yearStart = new Date(YEAR, 0, 1);
+        var monthStart = new Date(YEAR, i, 1);
+        var dayOffset = Math.round((monthStart - yearStart) / 86400000);
+        tl.scrollLeft = dayOffset * 28;
+      });
+      wr.appendChild(el);
+    });
+    wr.style.gridTemplateColumns = "repeat(12, minmax(0,1fr))";
+  } else {
+    // 요일 복원
+    ["일","월","화","수","목","금","토"].forEach(function(d, i){
+      var el = document.createElement("div");
+      el.textContent = d;
+      if(i===0) el.className="sun";
+      if(i===6) el.className="sat";
+      wr.appendChild(el);
+    });
+    wr.style.gridTemplateColumns = "";
+  }
+}
+
 document.getElementById("view-toggle-btn").addEventListener("click", function(){
   currentView = (currentView === "calendar") ? "gantt" : "calendar";
   var btn = document.getElementById("view-toggle-btn");
@@ -1661,131 +1698,204 @@ document.getElementById("view-toggle-btn").addEventListener("click", function(){
     btn.style.background = "var(--color-info)";
     btn.style.color = "#fff";
     btn.style.borderColor = "var(--color-info)";
+    setWeekdayRow(true);
     renderGantt();
   } else {
     btn.textContent = "간트뷰";
     btn.style.background = "";
     btn.style.color = "var(--color-info)";
     btn.style.borderColor = "var(--color-info)";
+    setWeekdayRow(false);
     render();
   }
 });
 
 function renderGantt(){
   syncSelects();
-  var year = view.year, month = view.month;
-  var daysInMonth = new Date(year, month+1, 0).getDate();
+  grid.style.display = "block";
+  grid.innerHTML = "";
+
+  var YEAR = today.getFullYear();
+  var yearStart = new Date(YEAR, 0, 1);
+  var totalDays = (YEAR % 4 === 0 && (YEAR % 100 !== 0 || YEAR % 400 === 0)) ? 366 : 365;
+  var COL_W = 28, LABEL_W = 190, ROW_H = 32, HEADER_H = 58;
   var todayStr = fmt(today.getFullYear(), today.getMonth(), today.getDate());
-  var monthStart = fmt(year, month, 1);
-  var monthEnd   = fmt(year, month, daysInMonth);
+  var todayDayIdx = Math.round((today - yearStart) / 86400000);
+  var RECUR = ["브이팀회의","브이팀회의&지식DB","오픈한 북클럽"];
+  var MONTH_NAMES = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
 
-  // 이번달에 걸치는 이벤트
-  var monthEvents = events.filter(function(e){
-    var eEnd = getEventDateEnd(e) || e.date;
-    return e.date <= monthEnd && eEnd >= monthStart;
-  });
+  function dayIdx(dateStr){
+    return Math.round((new Date(dateStr+"T00:00:00") - yearStart) / 86400000);
+  }
 
-  var groupOrder = Object.keys(CATS).concat(Object.keys(MEMBERS));
-  var groups = {};
-  groupOrder.forEach(function(k){ groups[k] = []; });
-  monthEvents.forEach(function(e){
-    if(groups[e.category] !== undefined) groups[e.category].push(e);
-  });
+  // ── 외부 컨테이너 ──
+  var outer = document.createElement("div");
+  outer.style.cssText = "display:flex;width:100%;height:calc(100vh - 180px);overflow:hidden;";
 
-  // grid-template-columns: 라벨(150px) + 날짜들(1fr씩)
-  var cols = "150px " + Array(daysInMonth).fill("1fr").join(" ");
+  // ── 라벨 컬럼 (고정 좌측) ──
+  var labelWrap = document.createElement("div");
+  labelWrap.style.cssText = "width:"+LABEL_W+"px;flex-shrink:0;display:flex;flex-direction:column;border-right:2px solid var(--color-border);";
+  var labelHead = document.createElement("div");
+  labelHead.style.cssText = "height:"+HEADER_H+"px;flex-shrink:0;background:var(--color-bg);border-bottom:2px solid var(--color-border);display:flex;align-items:center;padding:0 12px;font-size:13px;font-weight:700;color:var(--color-text-secondary);";
+  labelHead.textContent = "일정";
+  var labelBody = document.createElement("div");
+  labelBody.id = "g-label-body";
+  labelBody.style.cssText = "overflow:hidden;flex:1;";
+  labelWrap.appendChild(labelHead);
+  labelWrap.appendChild(labelBody);
 
-  var container = document.createElement("div");
-  container.style.cssText = "display:grid;grid-template-columns:"+cols+";width:100%;";
+  // ── 타임라인 컬럼 (가로 스크롤) ──
+  var tlWrap = document.createElement("div");
+  tlWrap.id = "g-timeline";
+  tlWrap.style.cssText = "flex:1;overflow:auto;";
 
-  // ---- 헤더 행 ----
-  // 라벨 헤더
-  var h0 = document.createElement("div");
-  h0.style.cssText = "padding:8px 10px;font-size:12px;font-weight:700;color:var(--color-text-secondary);background:var(--color-bg);border-bottom:2px solid var(--color-border);border-right:2px solid var(--color-border);";
-  h0.textContent = "일정";
-  container.appendChild(h0);
+  var tlInner = document.createElement("div");
+  tlInner.style.cssText = "width:"+(totalDays*COL_W)+"px;";
+
+  // 월 헤더
+  var monthRow = document.createElement("div");
+  monthRow.style.cssText = "display:flex;height:28px;background:var(--color-bg);border-bottom:1px solid var(--color-border);position:sticky;top:0;z-index:10;";
+  for(var m=0;m<12;m++){
+    var dim = new Date(YEAR, m+1, 0).getDate();
+    var mDiv = document.createElement("div");
+    mDiv.style.cssText = "width:"+(dim*COL_W)+"px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border-right:2px solid var(--color-border);color:var(--color-text-secondary);";
+    mDiv.textContent = YEAR+"년 "+MONTH_NAMES[m];
+    monthRow.appendChild(mDiv);
+  }
+  tlInner.appendChild(monthRow);
 
   // 날짜 헤더
-  for(var d=1; d<=daysInMonth; d++){
-    var dateStr = fmt(year, month, d);
-    var dow = new Date(dateStr+"T00:00:00").getDay();
-    var dh = document.createElement("div");
-    var isToday = dateStr === todayStr;
-    dh.style.cssText = "text-align:center;padding:4px 0;font-size:11px;font-weight:700;border-bottom:2px solid var(--color-border);border-right:1px solid var(--color-border);background:"+(isToday?"#fff8e1":"var(--color-bg)")+";";
-    dh.style.color = dow===0?"var(--sun-color)":dow===6?"var(--sat-color)":"var(--color-text-secondary)";
-    dh.innerHTML = "<div style='font-size:12px;'>"+d+"</div><div style='font-size:9px;opacity:0.7;'>"+["일","월","화","수","목","금","토"][dow]+"</div>";
-    container.appendChild(dh);
+  var dayRow = document.createElement("div");
+  dayRow.style.cssText = "display:flex;height:30px;background:var(--color-bg);border-bottom:2px solid var(--color-border);position:sticky;top:28px;z-index:10;";
+  for(var di=0;di<totalDays;di++){
+    var d = new Date(yearStart); d.setDate(d.getDate()+di);
+    var dStr = fmt(d.getFullYear(),d.getMonth(),d.getDate());
+    var dow = d.getDay();
+    var dDiv = document.createElement("div");
+    dDiv.style.cssText = "width:"+COL_W+"px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;border-right:1px solid var(--color-border);background:"+(dStr===todayStr?"#fff8e1":"");
+    dDiv.style.color = dow===0?"var(--sun-color)":dow===6?"var(--sat-color)":"var(--color-text-secondary)";
+    dDiv.textContent = d.getDate();
+    dayRow.appendChild(dDiv);
+  }
+  tlInner.appendChild(dayRow);
+
+  // 이벤트 바디
+  var evBody = document.createElement("div");
+  evBody.id = "g-ev-body";
+  tlInner.appendChild(evBody);
+
+  tlWrap.appendChild(tlInner);
+  outer.appendChild(labelWrap);
+  outer.appendChild(tlWrap);
+  grid.appendChild(outer);
+
+  // ── 보이는 달 계산 ──
+  function getVisibleMonths(scrollLeft, viewWidth){
+    var s = Math.max(0, Math.floor(scrollLeft / COL_W));
+    var e = Math.min(totalDays-1, Math.ceil((scrollLeft+viewWidth) / COL_W));
+    var vis = {};
+    for(var i=s;i<=e;i++){
+      var dd = new Date(yearStart); dd.setDate(dd.getDate()+i);
+      vis[dd.getFullYear()*12+dd.getMonth()] = true;
+    }
+    return vis;
   }
 
-  var hasAny = false;
-  groupOrder.forEach(function(catKey){
-    var evList = groups[catKey];
-    if(!evList || evList.length===0) return;
-    var catInfo = CATS[catKey]||MEMBERS[catKey];
-    if(!catInfo) return;
-    hasAny = true;
+  // ── 이벤트 행 빌드 ──
+  function buildRows(visMonths){
+    labelBody.innerHTML = "";
+    evBody.innerHTML = "";
+    var groupOrder = Object.keys(CATS).concat(Object.keys(MEMBERS));
+    groupOrder.forEach(function(catKey){
+      var ci = CATS[catKey]||MEMBERS[catKey]; if(!ci) return;
+      var catEvs = events.filter(function(e){
+        if(e.category!==catKey) return false;
+        if(RECUR.indexOf(e.item)!==-1) return false;
+        var es = e.date, ee = getEventDateEnd(e)||e.date;
+        var sm = parseInt(es.substring(0,4))*12+parseInt(es.substring(5,7))-1;
+        var em = parseInt(ee.substring(0,4))*12+parseInt(ee.substring(5,7))-1;
+        for(var vm=sm;vm<=em;vm++){ if(visMonths[vm]) return true; }
+        return false;
+      });
+      if(catEvs.length===0) return;
 
-    // 섹션 헤더 (전체 열 span)
-    var sec = document.createElement("div");
-    sec.style.cssText = "grid-column:1 / -1;padding:4px 10px;font-size:11px;font-weight:700;color:var(--color-text-secondary);background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);border-top:1px solid var(--color-border);";
-    sec.textContent = catInfo.label;
-    container.appendChild(sec);
-
-    evList.forEach(function(ev){
-      var evStart = ev.date < monthStart ? monthStart : ev.date;
-      var evEnd   = (getEventDateEnd(ev)||ev.date) > monthEnd ? monthEnd : (getEventDateEnd(ev)||ev.date);
-      var startDay = parseInt(evStart.split("-")[2]);
-      var endDay   = parseInt(evEnd.split("-")[2]);
-      var spanDays = endDay - startDay + 1;
-
-      // 라벨 셀
-      var labelCell = document.createElement("div");
-      labelCell.style.cssText = "padding:0 8px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-right:2px solid var(--color-border);border-bottom:1px solid var(--color-border);border-left:3px solid "+catInfo.color+";display:flex;align-items:center;height:34px;background:var(--color-bg);";
-      var labelTxt = ev.item||"";
-      if(ev.category==="production"||ev.category==="shoot") labelTxt = stageLabel(ev.stage,ev.category)+" · "+labelTxt;
-      labelCell.textContent = labelTxt;
-      labelCell.title = labelTxt;
-      container.appendChild(labelCell);
-
-      // 날짜 셀들 (시작 전 빈칸 + 바 + 끝 후 빈칸)
-      for(var d=1; d<=daysInMonth; d++){
-        var cell = document.createElement("div");
-        var isToday2 = fmt(year,month,d)===todayStr;
-        cell.style.cssText = "border-right:1px solid var(--color-border);border-bottom:1px solid var(--color-border);position:relative;height:34px;background:"+(isToday2?"#fffdf0":"transparent")+";";
-
-        if(d===startDay){
-          // 바 시작: colspan 효과 → absolute로 너비 계산
-          var bar = document.createElement("div");
-          // spanDays개 셀을 덮도록: 100% * spanDays - 4px
-          bar.style.cssText = "position:absolute;left:2px;top:5px;bottom:5px;width:calc("+spanDays+"00% + "+(spanDays-1)+"px - 4px);background:"+catInfo.color+";border-radius:4px;display:flex;align-items:center;padding:0 7px;font-size:10px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;z-index:2;box-shadow:0 1px 3px rgba(0,0,0,0.15);";
-          if(spanDays>=3) bar.textContent = labelTxt+" ("+(spanDays)+"일)";
-          else if(spanDays===2) bar.textContent = spanDays+"일";
-          bar.title = labelTxt+" "+spanDays+"일";
-          bar.addEventListener("click",function(ev2){
-            ev2.stopPropagation();
-            selectedDate=ev.date; render(); renderPanelList(ev.date);
-            currentView="calendar";
-            var btn=document.getElementById("view-toggle-btn");
-            btn.textContent="간트뷰"; btn.style.background=""; btn.style.color="var(--color-info)"; btn.style.borderColor="var(--color-info)";
-          });
-          cell.appendChild(bar);
-        }
-        container.appendChild(cell);
+      // 섹션 헤더
+      var sh = document.createElement("div");
+      sh.style.cssText = "height:24px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:700;color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      sh.textContent = ci.label;
+      labelBody.appendChild(sh);
+      var sht = document.createElement("div");
+      sht.style.cssText = "height:24px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);position:relative;";
+      // 오늘 선
+      if(todayDayIdx>=0&&todayDayIdx<totalDays){
+        var tl=document.createElement("div"); tl.style.cssText="position:absolute;left:"+(todayDayIdx*COL_W+COL_W/2)+"px;top:0;bottom:0;width:1px;background:rgba(26,26,24,0.15);";
+        sht.appendChild(tl);
       }
-    });
-  });
+      evBody.appendChild(sht);
 
-  if(!hasAny){
-    var empty = document.createElement("div");
-    empty.style.cssText = "grid-column:1/-1;padding:40px;text-align:center;font-size:14px;color:var(--color-text-tertiary);";
-    empty.textContent = "이번 달 등록된 일정이 없습니다.";
-    container.appendChild(empty);
+      catEvs.forEach(function(ev){
+        var es=ev.date, ee=getEventDateEnd(ev)||ev.date;
+        var si=Math.max(0,dayIdx(es)), ei=Math.min(totalDays-1,dayIdx(ee));
+        if(si>totalDays-1||ei<0) return;
+        var txt = getCalDisplayText(ev)+"  "+fmtShort(es)+(ee!==es?"~"+fmtShort(ee):"");
+
+        // 라벨 행
+        var lr=document.createElement("div");
+        lr.style.cssText="height:"+ROW_H+"px;display:flex;align-items:center;padding:0 10px;font-size:12px;border-bottom:1px solid var(--color-border);border-left:3px solid "+ci.color+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;background:var(--color-bg);";
+        lr.textContent=getCalDisplayText(ev); lr.title=txt;
+        lr.addEventListener("click",function(){ switchToCalendar(es); });
+        labelBody.appendChild(lr);
+
+        // 타임라인 행
+        var tr=document.createElement("div");
+        tr.style.cssText="height:"+ROW_H+"px;position:relative;border-bottom:1px solid var(--color-border);";
+        if(todayDayIdx>=0&&todayDayIdx<totalDays){
+          var tl2=document.createElement("div"); tl2.style.cssText="position:absolute;left:"+(todayDayIdx*COL_W+COL_W/2)+"px;top:0;bottom:0;width:1px;background:rgba(26,26,24,0.1);z-index:0;";
+          tr.appendChild(tl2);
+        }
+        var bar=document.createElement("div");
+        bar.style.cssText="position:absolute;left:"+(si*COL_W)+"px;width:"+((ei-si+1)*COL_W-4)+"px;top:5px;bottom:5px;background:"+ci.bg+";border-left:3px solid "+ci.color+";border-radius:4px;display:flex;align-items:center;padding:0 7px;font-size:11px;font-weight:500;color:"+ci.text+";white-space:nowrap;overflow:visible;cursor:pointer;z-index:1;";
+        bar.textContent=txt;
+        bar.addEventListener("click",function(){ switchToCalendar(es); });
+        tr.appendChild(bar);
+        evBody.appendChild(tr);
+      });
+    });
+    // 라벨 바디 높이 동기화
+    labelBody.style.height = evBody.offsetHeight+"px";
   }
 
-  grid.innerHTML = "";
-  grid.style.display = "block";
-  grid.appendChild(container);
+  function switchToCalendar(dateStr){
+    currentView="calendar";
+    var btn=document.getElementById("view-toggle-btn");
+    btn.textContent="간트뷰"; btn.style.background=""; btn.style.color="var(--color-info)"; btn.style.borderColor="var(--color-info)";
+    setWeekdayRow(false);
+    grid.style.display="";
+    selectedDate=dateStr; render(); renderPanelList(dateStr);
+  }
+
+  // 초기 스크롤: 오늘 중심
+  var initScroll = Math.max(0, todayDayIdx*COL_W - (tlWrap.offsetWidth||600)/2);
+  tlWrap.scrollLeft = initScroll;
+  var initVis = getVisibleMonths(initScroll, tlWrap.offsetWidth||800);
+  buildRows(initVis);
+
+  // 스크롤 이벤트: debounce
+  var stimer=null;
+  tlWrap.addEventListener("scroll", function(){
+    // 세로 스크롤 동기화
+    labelBody.scrollTop = tlWrap.scrollTop;
+    // 가로 스크롤 → 보이는 달 업데이트 (debounce)
+    if(stimer) clearTimeout(stimer);
+    stimer = setTimeout(function(){
+      var vis = getVisibleMonths(tlWrap.scrollLeft, tlWrap.offsetWidth);
+      buildRows(vis);
+      labelBody.scrollTop = tlWrap.scrollTop;
+    }, 200);
+  });
 }
+
+
 
 
 document.getElementById("prev-btn").addEventListener("click",function(){ view.month--; if(view.month<0){view.month=11;view.year--;} refreshAll(); });
