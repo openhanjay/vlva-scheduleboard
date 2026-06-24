@@ -325,7 +325,7 @@ function parseLeaveDesc(desc){
 function fmtDateKorean(dateStr){
   var d = new Date(dateStr + "T00:00:00");
   var wd = ["일","월","화","수","목","금","토"][d.getDay()];
-  return (d.getMonth()+1) + "월 " + d.getDate() + "일 (" + wd + ")";
+  return d.getFullYear() + "년 " + (d.getMonth()+1) + "월 " + d.getDate() + "일 (" + wd + ")";
 }
 function showToast(msg){
   toastRoot.innerHTML = "";
@@ -405,7 +405,36 @@ function loadHolidays(year, month){
 function buildCell(dateStr, dayLabel, isOutside){
   var cell = document.createElement("div");
   cell.className = "cell";
-  if (isOutside){ cell.className += " outside"; return cell; }
+  if (isOutside){
+    cell.className += " outside";
+    cell.style.opacity = "0.45";
+    // 날짜 번호
+    var outsideNum = document.createElement("div");
+    outsideNum.textContent = dayLabel;
+    outsideNum.style.cssText = "font-size:15px;color:var(--color-text-secondary);margin-bottom:6px;font-weight:400;";
+    cell.appendChild(outsideNum);
+    // 이벤트 표시 (dateStr이 있을 때만)
+    if (dateStr) {
+      var outsideDow = new Date(dateStr+"T00:00:00").getDay();
+      var outsideEvents = events.filter(function(e){
+        var de = getEventDateEnd(e);
+        if(de && de > e.date){
+          if(outsideDow===0||outsideDow===6) return false;
+          return dateStr >= e.date && dateStr <= de;
+        }
+        return e.date === dateStr;
+      });
+      outsideEvents.forEach(function(ev){
+        if(["브이팀회의","브이팀회의&지식DB","오픈한 북클럽"].indexOf(ev.item)!==-1) return;
+        var c = CATS[ev.category]||MEMBERS[ev.category]||CATS.other;
+        var oc = document.createElement("div");
+        oc.style.cssText = "font-size:12px;padding:2px 6px;border-radius:4px;background:"+c.bg+";color:"+c.text+";margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+        oc.textContent = getCalDisplayText(ev);
+        cell.appendChild(oc);
+      });
+    }
+    return cell;
+  }
   try {
   var isToday = dateStr === fmt(today.getFullYear(), today.getMonth(), today.getDate());
   var d = new Date(dateStr + "T00:00:00");
@@ -483,17 +512,24 @@ function buildCell(dateStr, dayLabel, isOutside){
       var brTL=isFirst?"4px":"0", brBL=isFirst?"4px":"0";
       var brTR=isLast?"4px":"0",  brBR=isLast?"4px":"0";
       var bar=document.createElement("div");
-      bar.style.cssText="position:relative;left:"+leftOff+";width:"+barW+";height:"+BAR_H+"px;background:"+c.bg+";border-radius:"+brTL+" "+brTR+" "+brBR+" "+brBL+";margin-bottom:3px;overflow:hidden;cursor:pointer;display:flex;align-items:center;padding:0 6px;"+(isFirst?"border-left:2px solid "+c.color+";":"")+"flex-shrink:0;box-sizing:border-box;";
+      var barOverflow=(isFirst&&!isLast)?"visible":"hidden";
+    bar.style.cssText="position:relative;left:"+leftOff+";width:"+barW+";height:"+BAR_H+"px;background:"+c.bg+";border-radius:"+brTL+" "+brTR+" "+brBR+" "+brBL+";margin-bottom:3px;overflow:"+barOverflow+";cursor:pointer;display:flex;align-items:center;padding:0 6px;"+(isFirst?"border-left:2px solid "+c.color+";":"")+"flex-shrink:0;box-sizing:border-box;";
       if(isFirst){
         var sp=document.createElement("span");
-        sp.style.cssText="font-size:12px;font-weight:500;color:"+c.text+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;";
-        sp.textContent = getCalDisplayText(activeEv);
+        sp.style.cssText="font-size:12px;font-weight:500;color:"+c.text+";white-space:nowrap;overflow:visible;pointer-events:none;position:relative;z-index:3;";
+        var de_span = getEventDateEnd(activeEv);
+      var rangeStr = fmtShort(activeEv.date) + "~" + fmtShort(de_span);
+      sp.textContent = getCalDisplayText(activeEv) + "  " + rangeStr;
         bar.appendChild(sp);
       }
       (function(ev,ds){ bar.addEventListener("click",function(e){ e.stopPropagation(); selectedDate=ds; render(); renderPanelList(ds); }); })(activeEv,dateStr);
       cell.appendChild(bar);
+    } else {
+      // 같은 주에 range 이벤트가 있으면 레인 위치 유지를 위해 spacer 추가
+      var spacer=document.createElement("div");
+      spacer.style.cssText="height:"+BAR_H+"px;margin-bottom:3px;flex-shrink:0;";
+      cell.appendChild(spacer);
     }
-    // spacer 없음: 바가 없는 셀은 단일 이벤트가 바로 위에 표시
   }
 
   } catch(laneErr){ console.error("Lane render error:", laneErr); }
@@ -573,11 +609,23 @@ function render(){
   var firstDay = new Date(view.year, view.month, 1).getDay();
   var daysInMonth = new Date(view.year, view.month+1, 0).getDate();
   var totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
+  var daysInPrevMonth = new Date(view.year, view.month, 0).getDate();
   for (var i=0; i<totalCells; i++){
     try {
       var dayNum = i - firstDay + 1;
-      if (dayNum < 1 || dayNum > daysInMonth){ grid.appendChild(buildCell(null, null, true)); continue; }
-      grid.appendChild(buildCell(fmt(view.year, view.month, dayNum), dayNum, false));
+      if (dayNum < 1){
+        var prevDay = daysInPrevMonth + dayNum;
+        var prevMonth = view.month - 1, prevYear = view.year;
+        if(prevMonth < 0){ prevMonth = 11; prevYear--; }
+        grid.appendChild(buildCell(fmt(prevYear, prevMonth, prevDay), prevDay, true));
+      } else if (dayNum > daysInMonth){
+        var nextDay = dayNum - daysInMonth;
+        var nextMonth = view.month + 1, nextYear = view.year;
+        if(nextMonth > 11){ nextMonth = 0; nextYear++; }
+        grid.appendChild(buildCell(fmt(nextYear, nextMonth, nextDay), nextDay, true));
+      } else {
+        grid.appendChild(buildCell(fmt(view.year, view.month, dayNum), dayNum, false));
+      }
     } catch(loopErr){
       console.error("render loop error at i="+i+":", loopErr);
       var emptyCell = document.createElement("div"); emptyCell.className = "cell";
@@ -1478,6 +1526,13 @@ function renderPanelForm(dateStr, ev){
 
 function refreshAllAndShowList(dateStr){
   loadAllData(view.year, view.month).then(function(){ renderCurrentView(); renderPanelList(dateStr); renderMemberPanel(); });
+}
+function fmtShort(dateStr){
+  // "26.05.06" 형식
+  if(!dateStr) return "";
+  var p = dateStr.split("-");
+  if(p.length < 3) return dateStr;
+  return p[0].slice(2)+"."+p[1]+"."+p[2];
 }
 // 캘린더 표시 텍스트: 운영/상품 그룹은 "서브카테고리 - 제목", 나머지는 제목만
 var PROD_CATS = ["production","shoot","prodetc"];
