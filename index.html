@@ -809,9 +809,14 @@ function renderMemberForm(ev){
   if(isEdit){
     var delBtn = document.createElement("button"); delBtn.className = "danger"; delBtn.textContent = "삭제";
     delBtn.addEventListener("click", function(){
-      delBtn.disabled = true; delBtn.textContent = "삭제 중...";
+      localDeleteEvent(ev.id);
+      render(); renderMemberPanel();
+      showToast("삭제 중...");
       apiPost({action:"delete", id:ev.id}).then(function(){
-        showToast("삭제되었습니다."); loadEvents().then(function(){ render(); renderMemberPanel(); });
+        showToast("삭제되었습니다.");
+      }).catch(function(){
+        showToast("삭제 실패. 새로고침 해주세요.");
+        loadEvents().then(function(){ render(); renderMemberPanel(); });
       });
     });
     leftBtns.appendChild(delBtn);
@@ -825,28 +830,29 @@ function renderMemberForm(ev){
   var saveBtn = document.createElement("button"); saveBtn.className = "primary"; saveBtn.textContent = "저장";
   saveBtn.addEventListener("click", function(){
     if(!dateInp.value){ showToast("날짜를 입력해주세요."); return; }
-    saveBtn.disabled = true; saveBtn.textContent = "저장 중...";
     var memberEndVal = dateEndInp.value || "";
     var memberStartVal = dateInp.value || "";
     var memberDesc = contentInp.value || "";
-    // 종료일이 시작일과 다르면 description에 인코딩
-    if (memberEndVal && memberEndVal !== memberStartVal) {
-      memberDesc = memberDesc + "||" + memberEndVal;
-    }
+    if (memberEndVal && memberEndVal !== memberStartVal) memberDesc = memberDesc + "||" + memberEndVal;
     var payload = {
       id: isEdit ? ev.id : undefined,
-      date: memberStartVal,
-      category: selectedMember,
-      stage: "", company: "",
-      item: titleInp.value,
-      imageUrl: "", variants: "",
-      description: memberDesc
+      date: memberStartVal, category: selectedMember,
+      stage: "", company: "", item: titleInp.value,
+      imageUrl: "", variants: "", description: memberDesc
     };
+    var mTempId = isEdit ? ev.id : ("tmp_"+Date.now());
+    var mTempEv = Object.assign({}, payload, {id: mTempId});
+    if(isEdit){ localUpdateEvent(mTempEv); } else { localAddEvent(mTempEv); }
+    render(); renderMemberPanel();
+    showToast(isEdit?"수정 중...":"저장 중...");
     apiPost({action: isEdit?"update":"create", data: payload}).then(function(res){
-      if(res.success===false){ showToast(res.error||"저장 중 오류"); saveBtn.disabled=false; saveBtn.textContent="저장"; return; }
+      if(res.success===false){ showToast(res.error||"저장 오류"); loadEvents().then(function(){ render(); renderMemberPanel(); }); return; }
+      if(!isEdit && res.id){
+        for(var i=0;i<events.length;i++){ if(String(events[i].id)===String(mTempId)){ events[i].id=res.id; break; } }
+        try{ localStorage.setItem(EVENTS_CACHE_KEY,JSON.stringify({ts:Date.now(),data:events})); }catch(e){}
+      }
       showToast("저장되었습니다.");
-      loadEvents().then(function(){ render(); renderMemberPanel(); });
-    }).catch(function(){ showToast("저장 중 오류가 발생했습니다."); saveBtn.disabled=false; saveBtn.textContent="저장"; });
+    }).catch(function(){ showToast("저장 오류. 새로고침 해주세요."); loadEvents().then(function(){ render(); renderMemberPanel(); }); });
   });
   rightBtns.appendChild(saveBtn);
   btnRow.appendChild(rightBtns);
@@ -1463,8 +1469,19 @@ function renderPanelForm(dateStr, ev){
   var leftBtns=document.createElement("div");
   if(isEdit){
     var delBtn=document.createElement("button"); delBtn.className="danger"; delBtn.textContent="삭제";
-    delBtn.addEventListener("click",function(){ delBtn.disabled=true; delBtn.textContent="삭제 중...";
-      apiPost({action:"delete",id:ev.id}).then(function(){ showToast("삭제되었습니다."); refreshAllAndShowList(dateStr); }); });
+    delBtn.addEventListener("click",function(){
+      // Optimistic 즉시 삭제
+      localDeleteEvent(ev.id);
+      renderCurrentView();
+      renderPanelList(dateStr);
+      showToast("삭제 중...");
+      apiPost({action:"delete",id:ev.id}).then(function(){
+        showToast("삭제되었습니다.");
+      }).catch(function(){
+        showToast("삭제 실패. 새로고침 해주세요.");
+        loadEvents().then(function(){ renderCurrentView(); renderPanelList(dateStr); });
+      });
+    });
     leftBtns.appendChild(delBtn);
   }
   btnRow.appendChild(leftBtns);
@@ -1504,7 +1521,6 @@ function renderPanelForm(dateStr, ev){
     // company 결정
     var companyVal = (cat==="production"||cat==="shoot") ? (fields.company?fields.company.value:"") : "";
 
-    saveBtn.disabled=true; saveBtn.textContent="저장 중...";
     var payload={
       id:isEdit?ev.id:undefined,
       date:startVal,
@@ -1516,10 +1532,35 @@ function renderPanelForm(dateStr, ev){
       variants:cat==="production"?stringifyVariants(variants):"",
       description:descVal
     };
+
+    // Optimistic 즉시 반영
+    var tempId = isEdit ? ev.id : ("tmp_"+Date.now());
+    var tempEv = Object.assign({}, payload, {id: tempId});
+    if(isEdit){ localUpdateEvent(tempEv); } else { localAddEvent(tempEv); }
+    renderCurrentView();
+    renderPanelList(startVal);
+    showToast(isEdit?"수정 중...":"저장 중...");
+
+    // 백그라운드 API 저장
     apiPost({action:isEdit?"update":"create",data:payload}).then(function(res){
-      if(res.success===false){ showToast(res.error||"저장 중 문제가 발생했습니다."); saveBtn.disabled=false; saveBtn.textContent="저장"; return; }
-      showToast("저장되었습니다."); refreshAllAndShowList(startVal);
-    }).catch(function(){ showToast("저장 중 오류가 발생했습니다."); saveBtn.disabled=false; saveBtn.textContent="저장"; });
+      if(res.success===false){
+        showToast("저장 실패: "+(res.error||"오류"));
+        // 실패 시 롤백: 전체 재로드
+        loadEvents().then(function(){ renderCurrentView(); renderPanelList(startVal); });
+        return;
+      }
+      // 성공: 임시 ID → 실제 ID 교체
+      if(!isEdit && res.id){
+        for(var i=0;i<events.length;i++){
+          if(String(events[i].id)===String(tempId)){ events[i].id=res.id; break; }
+        }
+        try{ localStorage.setItem(EVENTS_CACHE_KEY,JSON.stringify({ts:Date.now(),data:events})); }catch(e){}
+      }
+      showToast("저장되었습니다.");
+    }).catch(function(){
+      showToast("저장 오류. 새로고침 해주세요.");
+      loadEvents().then(function(){ renderCurrentView(); renderPanelList(startVal); });
+    });
   });
   rightBtns.appendChild(saveBtn); btnRow.appendChild(rightBtns); panel.appendChild(btnRow);
 }
@@ -1537,6 +1578,21 @@ function fmtShort(dateStr){
 // 캘린더 표시 텍스트: 운영/상품 그룹은 "서브카테고리 - 제목", 나머지는 제목만
 var PROD_CATS = ["production","shoot","prodetc"];
 var OP_CATS   = ["team","other","opetc"];
+// Optimistic 업데이트: 로컬 events 배열 즉시 수정
+function localAddEvent(evObj){
+  events.push(evObj);
+  try { localStorage.setItem(EVENTS_CACHE_KEY, JSON.stringify({ts:Date.now(),data:events})); } catch(e){}
+}
+function localUpdateEvent(evObj){
+  for(var i=0;i<events.length;i++){
+    if(String(events[i].id)===String(evObj.id)){ events[i]=evObj; break; }
+  }
+  try { localStorage.setItem(EVENTS_CACHE_KEY, JSON.stringify({ts:Date.now(),data:events})); } catch(e){}
+}
+function localDeleteEvent(id){
+  events = events.filter(function(e){ return String(e.id)!==String(id); });
+  try { localStorage.setItem(EVENTS_CACHE_KEY, JSON.stringify({ts:Date.now(),data:events})); } catch(e){}
+}
 function getCalDisplayText(ev){
   var c = CATS[ev.category] || MEMBERS[ev.category] || CATS.other;
   var title = ev.item || "";
