@@ -558,7 +558,7 @@ function buildCell(dateStr, dayLabel, isOutside){
     if(ev.category==="production"||ev.category==="shoot"){
       var textCol=document.createElement("div"); textCol.className="event-text";
       var line1=document.createElement("div"); line1.className="event-line1"; line1.style.color=c.text;
-      var prodTxt = stageLabel(ev.stage,ev.category)+" · "+(ev.company||"")+" · "+(ev.item||"");
+      var ev_s2=(ev.description&&/^[0-9]{2}(SS|FW)$/.test(String(ev.description)))?"["+ev.description+"] ":""; var prodTxt=stageLabel(ev.stage,ev.category)+" · "+ev_s2+(ev.item||"")+" · "+(ev.company||"");
       line1.textContent=prodTxt;
       card.title = prodTxt;
       textCol.appendChild(line1); card.appendChild(textCol);
@@ -1057,7 +1057,8 @@ function renderPanelList(dateStr){
     item.appendChild(catEl);
     var mainEl = document.createElement("div"); mainEl.className = "panel-list-main";
     if (ev.category === "production" || ev.category === "shoot"){
-      mainEl.textContent = (ev.company || "") + " · " + (ev.item || "");
+      var season = (ev.description && /^[0-9]{2}(SS|FW)$/.test(ev.description)) ? "["+ev.description+"] " : "";
+      mainEl.textContent = season + (ev.item || "") + " · " + (ev.company || "");
     } else if (ev.category === "leave"){
       var leaveParts = [];
       if (ev.item) leaveParts.push(ev.item);
@@ -1377,14 +1378,28 @@ function renderPanelForm(dateStr, ev){
     row.appendChild(sw); row.appendChild(ar); row.appendChild(ew);
     formWrap.appendChild(row);
   }
-  function mkStage(val){
+  function mkStage(val, seasonVal){
     var baseVal=getBaseStage(val);
-    var wrap=document.createElement("div"); wrap.className="field";
+
+    // 단계 + 시즌 가로 배치
+    var stageRow=document.createElement("div"); stageRow.style.cssText="display:flex;gap:8px;margin-bottom:10px;";
+
+    var wrap=document.createElement("div"); wrap.style.cssText="flex:1;min-width:0;";
     var lab=document.createElement("div"); lab.className="field-label"; lab.textContent="단계"; wrap.appendChild(lab);
-    var sel=document.createElement("select");
+    var sel=document.createElement("select"); sel.style.cssText="width:100%;padding:7px 6px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);";
     getStages(cat).forEach(function(s){ var o=document.createElement("option"); o.value=s.value; o.textContent=s.label; if(s.value===baseVal) o.selected=true; sel.appendChild(o); });
     sel.addEventListener("change",function(){ recordPicked=false; buildForm(sel.value); });
-    wrap.appendChild(sel); fields["stage"]=sel; formWrap.appendChild(wrap);
+    wrap.appendChild(sel); fields["stage"]=sel; stageRow.appendChild(wrap);
+
+    if(cat==="production"||cat==="shoot"){
+      var sWrap=document.createElement("div"); sWrap.style.cssText="flex:1;min-width:0;";
+      var sLab=document.createElement("div"); sLab.className="field-label"; sLab.textContent="시즌"; sWrap.appendChild(sLab);
+      var sSel=document.createElement("select"); sSel.style.cssText="width:100%;padding:7px 6px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);";
+      ["","26SS","26FW","27SS","27FW","28SS"].forEach(function(s){ var o=document.createElement("option"); o.value=s; o.textContent=s||"시즌 선택"; if(s===(seasonVal||"")) o.selected=true; sSel.appendChild(o); });
+      sWrap.appendChild(sSel); fields["season"]=sSel; stageRow.appendChild(sWrap);
+    }
+    formWrap.appendChild(stageRow);
+
     // 파샬/전체
     if(cat==="production" && (baseVal==="expected"||baseVal==="completed")){
       var pbWrap=document.createElement("div"); pbWrap.id="pf-partial-wrap";
@@ -1392,13 +1407,13 @@ function renderPanelForm(dateStr, ev){
       var partial=isPartial(val);
       if(baseVal==="expected"){
         ["파샬","전체"].forEach(function(label){
-          var lbl=document.createElement("label"); lbl.style.cssText="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:15px;color:var(--color-text);";
+          var lbl=document.createElement("label"); lbl.style.cssText="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--color-text);";
           var rb=document.createElement("input"); rb.type="radio"; rb.name="pf-partial"; rb.value=label; rb.id="pf-partial-"+label;
           if((partial&&label==="파샬")||(!partial&&label==="전체")) rb.checked=true;
           lbl.appendChild(rb); lbl.appendChild(document.createTextNode(label)); pbWrap.appendChild(lbl);
         });
       } else {
-        var lbl=document.createElement("label"); lbl.style.cssText="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:15px;color:var(--color-text);";
+        var lbl=document.createElement("label"); lbl.style.cssText="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--color-text);";
         var cb=document.createElement("input"); cb.type="checkbox"; cb.id="pf-partial-파샬"; cb.value="파샬"; if(partial) cb.checked=true;
         lbl.appendChild(cb); lbl.appendChild(document.createTextNode("파샬")); pbWrap.appendChild(lbl);
       }
@@ -1449,8 +1464,8 @@ function renderPanelForm(dateStr, ev){
     });
   }
   function renderProductionFields(){
-    mkField("업체명","company",recordPicked?pickedCompany:(isEdit?ev.company:""));
     mkField("상품명","item",recordPicked?pickedItem:(isEdit?ev.item:""));
+    mkField("업체명","company",recordPicked?pickedCompany:(isEdit?ev.company:""));
     var csl=fields.stage?fields.stage.value:""; var sq4=(csl!=="instruct");
     var vLabel=document.createElement("div"); vLabel.className="variant-row";
     vLabel.style.gridTemplateColumns=sq4?"1fr 1fr 0.8fr 0.8fr 26px":"1fr 1fr 0.9fr 26px"; vLabel.style.marginBottom="4px";
@@ -1518,16 +1533,18 @@ function renderPanelForm(dateStr, ev){
 
     } else if(cat==="production"){
       var is=forcedStage!==undefined?forcedStage:(isEdit?ev.stage:getStages(cat)[0].value);
-      mkStage(is);
+      var existingSeason = isEdit ? (ev.description && /^[0-9]{2}(SS|FW)$/.test(ev.description) ? ev.description : "") : "";
+      mkStage(is, existingSeason);
       mkSingleDate(isEdit?ev.date:dateStr);
       var cs=fields.stage?fields.stage.value:is;
       if(cs!=="instruct"&&!isEdit&&!recordPicked){ renderInstructPicker(cs); }
       else { renderProductionFields(); }
 
     } else if(cat==="shoot"){
-      mkStage(isEdit?ev.stage:getStages(cat)[0].value);
+      var existingSeasonS = isEdit ? (ev.description && /^[0-9]{2}(SS|FW)$/.test(ev.description) ? ev.description : "") : "";
+      mkStage(isEdit?ev.stage:getStages(cat)[0].value, existingSeasonS);
       mkSingleDate(isEdit?ev.date:dateStr);
-      mkField("업체명","company",isEdit?ev.company:""); mkField("상품명","item",isEdit?ev.item:"");
+      mkField("상품명","item",isEdit?ev.item:""); mkField("업체명","company",isEdit?ev.company:"");
 
     } else {
       // 날짜 범위 카테고리 (important, team, other, members)
@@ -1578,8 +1595,10 @@ function renderPanelForm(dateStr, ev){
     if(cat==="leave"){
       var lt = typeEl ? typeEl.value : "연차";
       descVal = (lt==="연차" && endVal && endVal !== startVal) ? lt+"||"+endVal : lt;
+    } else if(cat==="production"||cat==="shoot"){
+      // 시즌 저장
+      descVal = fields.season ? fields.season.value : "";
     } else if(cat!=="production" && cat!=="shoot" && endVal && endVal !== startVal){
-      // 범위 카테고리: "내용||종료일" 형식으로 인코딩
       var rawDesc = fields.description ? fields.description.value : "";
       descVal = rawDesc + "||" + endVal;
     } else {
