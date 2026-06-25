@@ -570,7 +570,7 @@ function buildCell(dateStr, dayLabel, isOutside){
     if(ev.category==="production"||ev.category==="shoot"){
       var textCol=document.createElement("div"); textCol.className="event-text";
       var line1=document.createElement("div"); line1.className="event-line1"; line1.style.color=c.text;
-      var ev_s2=(ev.description&&/^[0-9]{2}(SS|FW)$/.test(String(ev.description)))?"["+ev.description+"] ":""; var prodTxt=stageLabel(ev.stage,ev.category)+" · "+ev_s2+(ev.item||"")+" · "+(ev.company||"");
+      var ev_s2=getItemSeason(ev); var ev_s2pfx=ev_s2?"["+ev_s2+"] ":""; var prodTxt=stageLabel(ev.stage,ev.category)+" · "+ev_s2pfx+(ev.item||"")+" · "+(ev.company||"");
       line1.textContent=prodTxt;
       card.title = prodTxt;
       textCol.appendChild(line1); card.appendChild(textCol);
@@ -813,6 +813,14 @@ function renderMemberForm(ev){
   dateRangeDiv.appendChild(msw); dateRangeDiv.appendChild(mar); dateRangeDiv.appendChild(mew);
   memberPanelContent.appendChild(dateRangeDiv);
 
+  // 시즌 선택
+  var mSeasonWrap=document.createElement("div"); mSeasonWrap.className="field"; mSeasonWrap.style.marginBottom="10px";
+  var mSeasonLab=document.createElement("div"); mSeasonLab.className="field-label"; mSeasonLab.textContent="시즌 (선택)"; mSeasonWrap.appendChild(mSeasonLab);
+  var mSeasonSel=document.createElement("select"); mSeasonSel.style.cssText="width:100%;padding:7px 6px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);";
+  var mExistingSeason = isEdit ? parseSeasonFromDesc(ev.description) : "";
+  ["","26SS","26FW","27SS","27FW","28SS"].forEach(function(s){ var o=document.createElement("option"); o.value=s; o.textContent=s||"시즌 없음"; if(s===mExistingSeason) o.selected=true; mSeasonSel.appendChild(o); });
+  mSeasonWrap.appendChild(mSeasonSel); memberPanelContent.appendChild(mSeasonWrap);
+
   // 제목
   var tl = document.createElement("div"); tl.className = "field-label"; tl.textContent = "제목"; memberPanelContent.appendChild(tl);
   var titleInp = document.createElement("input"); titleInp.type = "text";
@@ -857,7 +865,10 @@ function renderMemberForm(ev){
     var memberEndVal = dateEndInp.value || "";
     var memberStartVal = dateInp.value || "";
     var memberDesc = contentInp.value || "";
-    if (memberEndVal && memberEndVal !== memberStartVal) memberDesc = memberDesc + "||" + memberEndVal;
+    var mSeasonVal = mSeasonSel ? mSeasonSel.value : "";
+    var mSeasonPfx = mSeasonVal ? "["+mSeasonVal+"]" : "";
+    if (memberEndVal && memberEndVal !== memberStartVal) memberDesc = mSeasonPfx + memberDesc + "||" + memberEndVal;
+    else memberDesc = mSeasonPfx + memberDesc;
     var payload = {
       id: isEdit ? ev.id : undefined,
       date: memberStartVal, category: selectedMember,
@@ -1076,8 +1087,8 @@ function renderPanelList(dateStr){
     item.appendChild(catEl);
     var mainEl = document.createElement("div"); mainEl.className = "panel-list-main";
     if (ev.category === "production" || ev.category === "shoot"){
-      var season = (ev.description && /^[0-9]{2}(SS|FW)$/.test(ev.description)) ? "["+ev.description+"] " : "";
-      mainEl.textContent = season + (ev.item || "") + " · " + (ev.company || "");
+      var season = getItemSeason(ev); var seasonPfx = season ? "["+season+"]·" : "";
+      mainEl.textContent = seasonPfx + (ev.item || "") + " · " + (ev.company || "");
     } else if (ev.category === "leave"){
       var leaveParts = [];
       if (ev.item) leaveParts.push(ev.item);
@@ -1087,12 +1098,14 @@ function renderPanelList(dateStr){
       mainEl.textContent = leaveParts.join(" · ");
     } else {
       var dateEnd = getEventDateEnd(ev);
+      var panelSeason = parseSeasonFromDesc(ev.description);
       var parts = [];
+      if (panelSeason) parts.push("["+panelSeason+"]");
       if (ev.item) parts.push(ev.item);
       var pureDesc = getEventDesc(ev);
       if (pureDesc) parts.push(pureDesc);
       if (dateEnd && dateEnd !== ev.date) parts.push(fmtDateKorean(ev.date) + " ~ " + fmtDateKorean(dateEnd));
-      mainEl.textContent = parts.join(" · ");
+      mainEl.textContent = parts.join("·");
     }
     item.appendChild(mainEl);
     if (ev.category === "production" && ev.variants){
@@ -1375,6 +1388,13 @@ function renderPanelForm(dateStr, ev){
     if(isTextarea) inp.rows=3; else inp.type="text"; inp.value=val||""; wrap.appendChild(inp);
     fields[key]=inp; formWrap.appendChild(wrap); return inp;
   }
+  function mkSeasonSelect(existingSeason){
+    var wrap=document.createElement("div"); wrap.className="field";
+    var lab=document.createElement("div"); lab.className="field-label"; lab.textContent="시즌 (선택)"; wrap.appendChild(lab);
+    var sel=document.createElement("select"); sel.style.cssText="width:100%;padding:7px 6px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);";
+    ["","26SS","26FW","27SS","27FW","28SS"].forEach(function(s){ var o=document.createElement("option"); o.value=s; o.textContent=s||"시즌 없음"; if(s===(existingSeason||"")) o.selected=true; sel.appendChild(o); });
+    wrap.appendChild(sel); fields["season_all"]=sel; formWrap.appendChild(wrap);
+  }
   function mkSingleDate(val){
     var wrap=document.createElement("div"); wrap.className="field";
     var lab=document.createElement("div"); lab.className="field-label"; lab.textContent="날짜"; wrap.appendChild(lab);
@@ -1568,6 +1588,7 @@ function renderPanelForm(dateStr, ev){
     } else {
       // 날짜 범위 카테고리 (important, team, other, members)
       var savedEnd = isEdit ? getEventDateEnd(ev) : "";
+      mkSeasonSelect(isEdit?parseSeasonFromDesc(ev.description):"");
       mkDateRange(isEdit?ev.date:dateStr, savedEnd);
       mkField("제목","item",isEdit?ev.item:"");
       // description에서 ||날짜 부분 제거하고 순수 내용만 표시
@@ -1611,17 +1632,18 @@ function renderPanelForm(dateStr, ev){
 
     // description 결정
     var descVal;
+    var seasonAllVal = fields.season_all ? fields.season_all.value : "";
+    var seasonPrfx = seasonAllVal ? "["+seasonAllVal+"]" : "";
     if(cat==="leave"){
       var lt = typeEl ? typeEl.value : "연차";
       descVal = (lt==="연차" && endVal && endVal !== startVal) ? lt+"||"+endVal : lt;
     } else if(cat==="production"||cat==="shoot"){
-      // 시즌 저장
       descVal = fields.season ? fields.season.value : "";
-    } else if(cat!=="production" && cat!=="shoot" && endVal && endVal !== startVal){
+    } else if(endVal && endVal !== startVal){
       var rawDesc = fields.description ? fields.description.value : "";
-      descVal = rawDesc + "||" + endVal;
+      descVal = seasonPrfx + rawDesc + "||" + endVal;
     } else {
-      descVal = fields.description ? fields.description.value : "";
+      descVal = seasonPrfx + (fields.description ? fields.description.value : "");
     }
 
     // stage 결정 (production 파샬)
@@ -1707,6 +1729,30 @@ function localDeleteEvent(id){
   events = events.filter(function(e){ return String(e.id)!==String(id); });
   try { localStorage.setItem(EVENTS_CACHE_KEY, JSON.stringify({ts:Date.now(),data:events})); } catch(e){}
 }
+// 같은 아이템의 투입일에서 시즌 찾기
+// description 앞에 붙는 [26SS] 형식 시즌 파싱
+function parseSeasonFromDesc(desc){
+  var m = String(desc||"").match(/^\[([0-9]{2}(?:SS|FW))\]/);
+  return m ? m[1] : "";
+}
+function stripSeasonFromDesc(desc){
+  return String(desc||"").replace(/^\[[0-9]{2}(?:SS|FW)\]/, "");
+}
+function getItemSeason(ev){
+  if(!ev || (ev.category!=="production" && ev.category!=="shoot")) return "";
+  // 자신의 description에 시즌이 있으면 그것 사용
+  if(ev.description && /^[0-9]{2}(SS|FW)$/.test(String(ev.description))) return ev.description;
+  // 없으면 같은 업체명+상품명의 instruct 이벤트에서 시즌 탐색
+  for(var i=0;i<events.length;i++){
+    var e=events[i];
+    if(e.category===ev.category && e.stage==="instruct" &&
+       (e.company||"")===(ev.company||"") && (e.item||"")===(ev.item||"") &&
+       e.description && /^[0-9]{2}(SS|FW)$/.test(String(e.description))){
+      return e.description;
+    }
+  }
+  return "";
+}
 function getCalDisplayText(ev){
   var c = CATS[ev.category] || MEMBERS[ev.category] || CATS.other;
   var title = ev.item || "";
@@ -1715,26 +1761,31 @@ function getCalDisplayText(ev){
     return (cld.type||"연차") + (title?" - "+title:"");
   }
   if(MEMBERS[ev.category]){
-    return c.label + (title?" - "+title:"");
+    var ms = parseSeasonFromDesc(ev.description);
+    var msmid = ms?" ["+ms+"]":"";
+    return c.label+msmid+(title?"·"+title:"");
   }
   // 운영/상품 그룹: 서브카테고리명 - 제목 (기타는 제목만)
   if(PROD_CATS.indexOf(ev.category)!==-1 || OP_CATS.indexOf(ev.category)!==-1){
-    if(ev.category==="opetc"||ev.category==="prodetc") return title;
-    return c.label + (title?" - "+title:"");
+    var s2 = parseSeasonFromDesc(ev.description);
+    var smid = s2?" ["+s2+"]":"";
+    if(ev.category==="opetc"||ev.category==="prodetc") return (s2?"["+s2+"]·":"")+title;
+    return c.label+smid+(title?"·"+title:"");
   }
-  // 중요일정/커머스/컨텐츠: 제목만
-  return title;
+  // 중요일정/커머스/컨텐츠
+  var s = parseSeasonFromDesc(ev.description);
+  return (s?"["+s+"]·":"")+title;
 }
 function getEventDateEnd(ev){
   if (ev.category === "production" || ev.category === "shoot") return "";
-  var desc = String(ev.description || "");
+  var desc = stripSeasonFromDesc(ev.description);
   var sepIdx = desc.lastIndexOf("||");
   if (sepIdx === -1) return "";
   var after = desc.substring(sepIdx + 2);
   return /^\d{4}-\d{2}-\d{2}$/.test(after) ? after : "";
 }
 function getEventDesc(ev){
-  var desc = String(ev.description || "");
+  var desc = stripSeasonFromDesc(ev.description);
   var sepIdx = desc.lastIndexOf("||");
   if (sepIdx === -1) return desc;
   var after = desc.substring(sepIdx + 2);
@@ -1958,6 +2009,61 @@ function renderGantt(){
         sht.appendChild(tl);
       }
       evBody.appendChild(sht);
+
+      // 메인/샘플: 아이템별로 묶어서 런닝타임 한 줄 표시
+      if(catKey==="production"||catKey==="shoot"){
+        var itemGroups={};
+        catEvs.forEach(function(ev){
+          var gk=(ev.company||"")+"||"+(ev.item||"");
+          if(!itemGroups[gk]) itemGroups[gk]={company:ev.company||"",item:ev.item||"",season:"",evs:[]};
+          itemGroups[gk].evs.push(ev);
+          if(ev.description&&/^[0-9]{2}(SS|FW)$/.test(String(ev.description))) itemGroups[gk].season=ev.description;
+        });
+        Object.keys(itemGroups).forEach(function(gk){
+          var grp=itemGroups[gk];
+          var dates=grp.evs.map(function(e){ return e.date; }).sort();
+          var minDate=dates[0], maxDate=dates[dates.length-1];
+          var si=Math.max(0,dayIdx(minDate)), ei=Math.min(totalDays-1,dayIdx(maxDate));
+          if(si>totalDays-1||ei<0) return;
+          var seasonPfx=grp.season?"["+grp.season+"] ":"";
+          var labelTxt=seasonPfx+(grp.item||"")+(grp.company?" · "+grp.company:"");
+
+          // 라벨 행
+          var lr=document.createElement("div");
+          lr.style.cssText="height:"+ROW_H+"px;display:flex;align-items:center;padding:0 10px;font-size:12px;border-bottom:1px solid var(--color-border);border-left:3px solid "+ci.color+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;background:var(--color-bg);";
+          lr.textContent=labelTxt; lr.title=labelTxt+" "+fmtShort(minDate)+"~"+fmtShort(maxDate);
+          lr.addEventListener("click",function(){ switchToCalendar(minDate); });
+          labelBody.appendChild(lr);
+
+          // 타임라인 행
+          var tr=document.createElement("div");
+          tr.style.cssText="height:"+ROW_H+"px;position:relative;border-bottom:1px solid var(--color-border);";
+          if(todayDayIdx>=0&&todayDayIdx<totalDays){
+            var tl2=document.createElement("div"); tl2.style.cssText="position:absolute;left:"+(todayDayIdx*COL_W+COL_W/2)+"px;top:0;bottom:0;width:1px;background:rgba(26,26,24,0.1);z-index:0;";
+            tr.appendChild(tl2);
+          }
+          // 런닝타임 바
+          var barW=(ei-si+1)*COL_W-4;
+          var bar=document.createElement("div");
+          bar.style.cssText="position:absolute;left:"+(si*COL_W)+"px;width:"+barW+"px;top:6px;bottom:6px;background:"+ci.bg+";border-left:3px solid "+ci.color+";border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:11px;font-weight:500;color:"+ci.text+";white-space:nowrap;overflow:visible;cursor:pointer;z-index:1;";
+          bar.textContent=labelTxt+"  "+fmtShort(minDate)+"~"+fmtShort(maxDate);
+          bar.addEventListener("click",function(){ switchToCalendar(minDate); });
+          tr.appendChild(bar);
+          // 단계 마커 (각 이벤트 날짜에 점)
+          grp.evs.forEach(function(ev){
+            var di=dayIdx(ev.date);
+            if(di<0||di>=totalDays) return;
+            var dot=document.createElement("div");
+            var stLab=stageLabel(ev.stage,catKey);
+            dot.style.cssText="position:absolute;left:"+(di*COL_W+COL_W/2-5)+"px;top:50%;transform:translateY(-50%);width:10px;height:10px;border-radius:50%;background:"+ci.color+";border:2px solid #fff;z-index:3;cursor:pointer;";
+            dot.title=stLab+" ("+ev.date+")";
+            dot.addEventListener("click",function(e){ e.stopPropagation(); switchToCalendar(ev.date); });
+            tr.appendChild(dot);
+          });
+          evBody.appendChild(tr);
+        });
+        return;
+      }
 
       catEvs.forEach(function(ev){
         var es=ev.date, ee=getEventDateEnd(ev)||ev.date;
