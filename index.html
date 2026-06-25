@@ -531,10 +531,21 @@ function buildCell(dateStr, dayLabel, isOutside){
     })(activeEv,dateStr);
       cell.appendChild(bar);
     } else {
-      // 같은 주에 range 이벤트가 있으면 레인 위치 유지를 위해 spacer 추가
-      var spacer=document.createElement("div");
-      spacer.style.cssText="height:"+BAR_H+"px;margin-bottom:3px;flex-shrink:0;";
-      cell.appendChild(spacer);
+      // 이 날짜를 실제로 지나가는 바가 있을 때만 spacer 추가
+      var hasBarHere = false;
+      for(var si2=0; si2<laneEvents.length; si2++){
+        var le2=laneEvents[si2];
+        if(le2.lane===lane){
+          var le2s=le2.ev.date;
+          var le2e=getEventDateEnd(le2.ev)||le2s;
+          if(dateStr>=le2s && dateStr<=le2e){ hasBarHere=true; break; }
+        }
+      }
+      if(hasBarHere){
+        var spacer=document.createElement("div");
+        spacer.style.cssText="height:"+BAR_H+"px;margin-bottom:3px;flex-shrink:0;";
+        cell.appendChild(spacer);
+      }
     }
   }
 
