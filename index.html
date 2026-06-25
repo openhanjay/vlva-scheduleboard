@@ -305,6 +305,7 @@ var holidays = {};
 var selectedDate = null;
 var eventLanes = {};
 var currentView = "calendar";
+var currentGanttYear = new Date().getFullYear();
 
 var weekdayRow = document.getElementById("weekday-row");
 var grid = document.getElementById("grid");
@@ -1759,26 +1760,36 @@ function setWeekdayRow(isGantt){
   var wr = document.getElementById("weekday-row");
   wr.innerHTML = "";
   if(isGantt){
-    // 월 이름으로 교체
-    ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"].forEach(function(m, i){
-      var el = document.createElement("div");
-      el.textContent = m;
-      el.style.cssText = "cursor:pointer;transition:color 0.15s;";
-      el.addEventListener("mouseenter", function(){ el.style.color="var(--color-info)"; });
-      el.addEventListener("mouseleave", function(){ el.style.color=""; });
-      el.addEventListener("click", function(){
-        // 해당 월의 1일까지 스크롤
-        var tl = document.getElementById("g-timeline");
-        if(!tl) return;
-        var YEAR = today.getFullYear();
-        var yearStart = new Date(YEAR, 0, 1);
-        var monthStart = new Date(YEAR, i, 1);
-        var dayOffset = Math.round((monthStart - yearStart) / 86400000);
-        tl.scrollLeft = dayOffset * 28;
-      });
-      wr.appendChild(el);
+    // 연도 네비게이션 버튼 (맨 앞에 삽입)
+    var yearNav = document.createElement("div");
+    yearNav.id = "gantt-year-nav";
+    yearNav.style.cssText = "display:flex;align-items:center;gap:6px;grid-column:1/-1;justify-content:center;padding:4px 0;";
+    var prevYearBtn = document.createElement("button");
+    prevYearBtn.textContent = "◀";
+    prevYearBtn.style.cssText = "background:none;border:none;cursor:pointer;font-size:14px;color:var(--color-text-secondary);padding:0 4px;line-height:1;";
+    var yearLabel = document.createElement("span");
+    yearLabel.id = "gantt-year-label";
+    yearLabel.style.cssText = "font-size:20px;font-weight:700;color:var(--color-text);min-width:60px;text-align:center;";
+    yearLabel.textContent = currentGanttYear + "년";
+    var nextYearBtn = document.createElement("button");
+    nextYearBtn.textContent = "▶";
+    nextYearBtn.style.cssText = "background:none;border:none;cursor:pointer;font-size:14px;color:var(--color-text-secondary);padding:0 4px;line-height:1;";
+    prevYearBtn.addEventListener("click", function(){
+      currentGanttYear--;
+      yearLabel.textContent = currentGanttYear + "년";
+      renderGantt();
     });
-    wr.style.gridTemplateColumns = "repeat(12, minmax(0,1fr))";
+    nextYearBtn.addEventListener("click", function(){
+      currentGanttYear++;
+      yearLabel.textContent = currentGanttYear + "년";
+      renderGantt();
+    });
+    yearNav.appendChild(prevYearBtn);
+    yearNav.appendChild(yearLabel);
+    yearNav.appendChild(nextYearBtn);
+    wr.style.gridTemplateColumns = "1fr";
+    wr.appendChild(yearNav);
+    return;
   } else {
     // 요일 복원
     ["일","월","화","수","목","금","토"].forEach(function(d, i){
@@ -1817,9 +1828,10 @@ function renderGantt(){
   grid.style.display = "block";
   grid.innerHTML = "";
 
-  var YEAR = today.getFullYear();
+  var YEAR = currentGanttYear || today.getFullYear();
   var yearStart = new Date(YEAR, 0, 1);
-  var totalDays = (YEAR % 4 === 0 && (YEAR % 100 !== 0 || YEAR % 400 === 0)) ? 366 : 365;
+  var isLeap = (YEAR%4===0 && (YEAR%100!==0 || YEAR%400===0));
+  var totalDays = isLeap ? 366 : 365;
   var COL_W = 28, LABEL_W = 190, ROW_H = 32, HEADER_H = 58;
   var todayStr = fmt(today.getFullYear(), today.getMonth(), today.getDate());
   var todayDayIdx = Math.round((today - yearStart) / 86400000);
@@ -1861,7 +1873,7 @@ function renderGantt(){
     var dim = new Date(YEAR, m+1, 0).getDate();
     var mDiv = document.createElement("div");
     mDiv.style.cssText = "width:"+(dim*COL_W)+"px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border-right:2px solid var(--color-border);color:var(--color-text-secondary);";
-    mDiv.textContent = YEAR+"년 "+MONTH_NAMES[m];
+    mDiv.textContent = MONTH_NAMES[m];
     monthRow.appendChild(mDiv);
   }
   tlInner.appendChild(monthRow);
