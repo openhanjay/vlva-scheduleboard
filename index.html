@@ -1717,8 +1717,9 @@ function getCalDisplayText(ev){
   if(MEMBERS[ev.category]){
     return c.label + (title?" - "+title:"");
   }
-  // 운영/상품 그룹: 서브카테고리명 - 제목
+  // 운영/상품 그룹: 서브카테고리명 - 제목 (기타는 제목만)
   if(PROD_CATS.indexOf(ev.category)!==-1 || OP_CATS.indexOf(ev.category)!==-1){
+    if(ev.category==="opetc"||ev.category==="prodetc") return title;
     return c.label + (title?" - "+title:"");
   }
   // 중요일정/커머스/컨텐츠: 제목만
