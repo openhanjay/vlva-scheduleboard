@@ -214,7 +214,10 @@
           <div class="legend">
             <div class="legend-item"><span class="dot" style="background:#39FF14;"></span>중요일정</div>
             <div class="legend-item"><span class="dot" style="background:#E4E212;"></span>운영</div>
-            <div class="legend-item"><span class="dot" style="background:#E24B4A;"></span>상품</div>
+            <div class="legend-item"><span class="dot" style="background:#E24B4A;"></span>메인</div>
+            <div class="legend-item"><span class="dot" style="background:#3498DB;"></span>샘플</div>
+            <div class="legend-item"><span class="dot" style="background:#8E44AD;"></span>패턴</div>
+            <div class="legend-item"><span class="dot" style="background:#E91E8C;"></span>기타(상품)</div>
             <div class="legend-item"><span class="dot" style="background:#43A047;"></span>커머스</div>
             <div class="legend-item"><span class="dot" style="background:#1E88E5;"></span>컨텐츠</div>
           </div>
@@ -254,8 +257,9 @@ var API_URL = "https://script.google.com/macros/s/AKfycbw7isRxme_nzrVS-hQf_IttVR
 var CATS = {
   important:   { label: "중요일정", color: "#39FF14", bg: "#C8FFB0", text: "#1A6600" },
   production:  { label: "메인",     color: "#E24B4A", bg: "#FFCCCC", text: "#791F1F", text2: "#A32D2D" },
-  shoot:       { label: "샘플",     color: "#E24B4A", bg: "#FFCCCC", text: "#791F1F" },
-  prodetc:     { label: "기타",     color: "#E24B4A", bg: "#FFCCCC", text: "#791F1F" },
+  shoot:       { label: "샘플",     color: "#3498DB", bg: "#D6EAF8", text: "#1A5276" },
+  pattern:     { label: "패턴",     color: "#8E44AD", bg: "#E8DAEF", text: "#4A235A" },
+  prodetc:     { label: "기타",     color: "#E91E8C", bg: "#FCE4F3", text: "#8B0A52" },
   content:     { label: "컨텐츠",   color: "#1E88E5", bg: "#BBDEFB", text: "#0D47A1" },
   commerce:    { label: "커머스",   color: "#43A047", bg: "#C8E6C9", text: "#1B5E20" },
   team:        { label: "팀 일정",  color: "#E4E212", bg: "#F5F59A", text: "#3D3A00" },
@@ -268,7 +272,7 @@ var CATS = {
 var GROUPS = [
   { key: "important", label: "중요일정", color: "#39FF14", bg: "#C8FFB0", text: "#1A6600", subCats: [] },
   { key: "operation", label: "운영",     color: "#E4E212", bg: "#F5F59A", text: "#3D3A00", subCats: ["team","other","opetc"] },
-  { key: "product",   label: "상품",     color: "#E24B4A", bg: "#FFCCCC", text: "#791F1F", subCats: ["production","shoot","prodetc"] },
+  { key: "product",   label: "상품",     color: "#E24B4A", bg: "#FFCCCC", text: "#791F1F", subCats: ["production","shoot","pattern","prodetc"] },
   { key: "commerce",  label: "커머스",   color: "#43A047", bg: "#C8E6C9", text: "#1B5E20", subCats: [] },
   { key: "content",   label: "컨텐츠",   color: "#1E88E5", bg: "#BBDEFB", text: "#0D47A1", subCats: [] }
 ];
@@ -567,7 +571,7 @@ function buildCell(dateStr, dayLabel, isOutside){
       return;
     }
     var card=document.createElement("div"); card.className="event-card"; card.style.background=c.bg;
-    if(ev.category==="production"||ev.category==="shoot"){
+    if(ev.category==="production"||ev.category==="shoot"||ev.category==="pattern"){
       var textCol=document.createElement("div"); textCol.className="event-text";
       var line1=document.createElement("div"); line1.className="event-line1"; line1.style.color=c.text;
       var ev_s2=getItemSeason(ev); var ev_s2pfx=ev_s2?"["+ev_s2+"] ":""; var prodTxt=stageLabel(ev.stage,ev.category)+" · "+ev_s2pfx+(ev.item||"")+" · "+(ev.company||"");
@@ -1086,7 +1090,7 @@ function renderPanelList(dateStr){
     catEl.textContent = c.label + (ev.category === "production" || ev.category === "shoot" ? " · " + stageLabel(ev.stage, ev.category) : "");
     item.appendChild(catEl);
     var mainEl = document.createElement("div"); mainEl.className = "panel-list-main";
-    if (ev.category === "production" || ev.category === "shoot"){
+    if (ev.category === "production" || ev.category === "shoot" || ev.category === "pattern"){
       var season = getItemSeason(ev); var seasonPfx = season ? "["+season+"]·" : "";
       mainEl.textContent = seasonPfx + (ev.item || "") + " · " + (ev.company || "");
     } else if (ev.category === "leave"){
@@ -1161,69 +1165,90 @@ function renderPanelList(dateStr){
         var variantWrap = document.createElement("div"); variantWrap.className = "panel-list-variant-wrap"; variantWrap.appendChild(table); item.appendChild(variantWrap);
       }
     }
+    // 입고 예정 이벤트에 입고 완료 버튼 추가
+    if((ev.category==="production"||ev.category==="shoot"||ev.category==="pattern") &&
+       (ev.stage==="expected"||ev.stage==="expected_p")){
+      var complBtn = document.createElement("button");
+      complBtn.textContent = "입고 완료";
+      complBtn.style.cssText = "margin-top:6px;width:100%;font-size:12px;padding:5px 0;border:1px solid "+c.color+";color:"+c.color+";background:transparent;border-radius:var(--radius-md);cursor:pointer;";
+      (function(cev){
+        complBtn.addEventListener("click", function(e){
+          e.stopPropagation();
+          complBtn.disabled = true; complBtn.textContent = "처리 중...";
+          var updated = Object.assign({}, cev, {stage:"completed"});
+          localUpdateEvent(updated);
+          renderCurrentView(); renderPanelList(dateStr);
+          showToast("입고 완료 처리 중...");
+          apiPost({action:"update", data:{id:cev.id,date:cev.date,category:cev.category,stage:"completed",company:cev.company||"",item:cev.item||"",imageUrl:cev.imageUrl||"",variants:cev.variants||"",description:cev.description||""}}).then(function(res){
+            if(res.success===false){ showToast("오류: "+(res.error||"")); loadEvents().then(function(){ renderCurrentView(); renderPanelList(dateStr); }); return; }
+            showToast("입고 완료!");
+          }).catch(function(){ showToast("오류. 새로고침 해주세요."); loadEvents().then(function(){ renderCurrentView(); renderPanelList(dateStr); }); });
+        });
+      })(ev);
+      item.appendChild(complBtn);
+    }
     item.addEventListener("click", function(){ renderPanelForm(dateStr, ev); }); panel.appendChild(item);
 
     // 투입일(instruct) 이벤트에 입고 예정일 설정 UI 추가
-    if ((ev.category === "production" || ev.category === "shoot") && ev.stage === "instruct"){
+    if ((ev.category === "production" || ev.category === "shoot" || ev.category === "pattern") && ev.stage === "instruct"){
       var instrCard = document.createElement("div");
-      instrCard.style.cssText = "border:1px dashed var(--color-border);border-radius:var(--radius-md);padding:10px;margin-bottom:8px;background:var(--color-bg-secondary);";
+      instrCard.style.cssText = "border:1px dashed var(--color-border);border-radius:var(--radius-md);padding:6px 10px;margin-bottom:8px;background:var(--color-bg-secondary);";
 
-      var instrTitle = document.createElement("div");
-      instrTitle.style.cssText = "font-size:11px;font-weight:600;color:var(--color-text-secondary);margin-bottom:8px;";
-      instrTitle.textContent = "📅 입고 예정일 설정";
-      instrCard.appendChild(instrTitle);
 
-      var instrRow = document.createElement("div");
-      instrRow.style.cssText = "display:flex;gap:8px;align-items:center;";
 
-      var instrLab = document.createElement("div");
-      instrLab.className = "field-label";
-      instrLab.style.cssText = "margin:0;white-space:nowrap;font-size:11px;";
-      instrLab.textContent = "입고 예정일";
-
-      var instrDateInp = document.createElement("input");
-      instrDateInp.type = "date";
-      instrDateInp.style.cssText = "flex:1;padding:6px 8px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:12px;font-family:inherit;background:var(--color-bg);color:var(--color-text);";
-
-      var instrBtn = document.createElement("button");
-      instrBtn.textContent = "입고 예정 생성";
-      instrBtn.style.cssText = "font-size:12px;padding:6px 10px;background:var(--color-text);color:#fff;border:none;border-radius:var(--radius-md);cursor:pointer;white-space:nowrap;";
-
-      instrBtn.addEventListener("click", function(e){
-        e.stopPropagation();
-        if(!instrDateInp.value){ showToast("입고 예정일을 선택해주세요."); return; }
-        instrBtn.disabled = true; instrBtn.textContent = "생성 중...";
-        var newPayload = {
-          date: instrDateInp.value,
-          category: ev.category,
-          stage: "expected",
-          company: ev.company||"",
-          item: ev.item||"",
-          imageUrl: "",
-          variants: ev.variants||"",
-          description: ""
-        };
-        var tempEv = Object.assign({}, newPayload, {id: "tmp_"+Date.now()});
-        localAddEvent(tempEv);
-        renderCurrentView();
-        renderPanelList(dateStr);
-        showToast("입고 예정 생성 중...");
-        apiPost({action:"create", data:newPayload}).then(function(res){
-          if(res.success===false){ showToast(res.error||"생성 중 오류가 발생했습니다."); loadEvents().then(function(){ renderCurrentView(); renderPanelList(instrDateInp.value); }); return; }
-          showToast("입고 예정 일정이 생성되었습니다!");
-          if(res.id){
-            for(var i=0;i<events.length;i++){ if(events[i].id===tempEv.id){ events[i].id=res.id; break; } }
-            try{ localStorage.setItem(EVENTS_CACHE_KEY,JSON.stringify({ts:Date.now(),data:events})); }catch(ex){}
-          }
-          renderCurrentView();
-          renderPanelList(instrDateInp.value);
-        }).catch(function(){ showToast("생성 중 오류가 발생했습니다."); instrBtn.disabled=false; instrBtn.textContent="입고 예정 생성"; });
+      // 기존 입고 예정일 표시
+      var existingExpected = events.filter(function(e){
+        return (["production","shoot","pattern"].indexOf(e.category)!==-1) &&
+               (e.stage==="expected"||e.stage==="expected_p") &&
+               (e.company||"")===(ev.company||"") &&
+               (e.item||"")===(ev.item||"");
+      });
+      existingExpected.forEach(function(ee){
+        var eeRow = document.createElement("div");
+        eeRow.style.cssText = "font-size:12px;color:var(--color-text);padding:3px 0;display:flex;align-items:center;gap:6px;";
+        var dot = document.createElement("span");
+        dot.style.cssText = "width:6px;height:6px;border-radius:50%;background:"+CATS[ev.category].color+";flex-shrink:0;display:inline-block;";
+        var txt = document.createElement("span");
+        txt.textContent = fmtShort(ee.date) + " 입고 예정";
+        eeRow.appendChild(dot);
+        eeRow.appendChild(txt);
+        instrCard.appendChild(eeRow);
       });
 
-      instrRow.appendChild(instrLab);
-      instrRow.appendChild(instrDateInp);
-      instrRow.appendChild(instrBtn);
-      instrCard.appendChild(instrRow);
+      // 예정일 없으면 생성 입력, 있으면 텍스트만
+      if(existingExpected.length === 0){
+        var instrRow = document.createElement("div");
+        instrRow.style.cssText = "display:flex;gap:8px;align-items:center;margin-top:4px;";
+        var instrDateInp = document.createElement("input");
+        instrDateInp.type = "date";
+        instrDateInp.style.cssText = "flex:1;padding:6px 8px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:12px;font-family:inherit;background:var(--color-bg);color:var(--color-text);";
+        var instrBtn = document.createElement("button");
+        instrBtn.textContent = "예정일 생성";
+        instrBtn.style.cssText = "font-size:12px;padding:6px 10px;background:var(--color-text);color:#fff;border:none;border-radius:var(--radius-md);cursor:pointer;white-space:nowrap;";
+        (function(instrEv){
+          instrBtn.addEventListener("click", function(e){
+            e.stopPropagation();
+            if(!instrDateInp.value){ showToast("입고 예정일을 선택해주세요."); return; }
+            instrBtn.disabled = true; instrBtn.textContent = "생성 중...";
+            var newPayload = {
+              date: instrDateInp.value, category: instrEv.category,
+              stage: "expected", company: instrEv.company||"", item: instrEv.item||"",
+              imageUrl: "", variants: instrEv.variants||"", description: instrEv.description||""
+            };
+            var tempEv = Object.assign({}, newPayload, {id:"tmp_"+Date.now()});
+            localAddEvent(tempEv);
+            renderCurrentView(); renderPanelList(dateStr);
+            showToast("입고 예정일이 생성되었습니다!");
+            apiPost({action:"create", data:newPayload}).then(function(res){
+              if(res.success===false){ showToast(res.error||"오류"); loadEvents().then(function(){ renderCurrentView(); renderPanelList(dateStr); }); return; }
+              if(res.id){ for(var i=0;i<events.length;i++){ if(events[i].id===tempEv.id){ events[i].id=res.id; break; } } try{ localStorage.setItem(EVENTS_CACHE_KEY,JSON.stringify({ts:Date.now(),data:events})); }catch(ex){} }
+            }).catch(function(){ showToast("오류. 새로고침 해주세요."); });
+          });
+        })(ev);
+        instrRow.appendChild(instrDateInp);
+        instrRow.appendChild(instrBtn);
+        instrCard.appendChild(instrRow);
+      }
       panel.appendChild(instrCard);
     }
 
@@ -1301,7 +1326,7 @@ function renderPanelForm(dateStr, ev){
   panel.innerHTML = "";
 
   // 날짜범위 카테고리 (시작일~종료일) / 단일 날짜 카테고리
-  var RANGE_CATS = ["leave","important","team","other","opetc","content","commerce","prodetc","kevin","mendi","alex","sena","lion","jay"];
+  var RANGE_CATS = ["leave","important","team","other","opetc","content","commerce","prodetc","pattern","kevin","mendi","alex","sena","lion","jay"];
   var isRangeCat = RANGE_CATS.indexOf(cat) !== -1;
 
   var backBtn = document.createElement("button"); backBtn.className = "panel-back-btn"; backBtn.textContent = "← 목록으로";
@@ -1430,7 +1455,7 @@ function renderPanelForm(dateStr, ev){
     sel.addEventListener("change",function(){ recordPicked=false; buildForm(sel.value); });
     wrap.appendChild(sel); fields["stage"]=sel; stageRow.appendChild(wrap);
 
-    if(cat==="production"||cat==="shoot"){
+    if(cat==="production"||cat==="shoot"||cat==="pattern"){
       var sWrap=document.createElement("div"); sWrap.style.cssText="flex:1;min-width:0;";
       var sLab=document.createElement("div"); sLab.className="field-label"; sLab.textContent="시즌"; sWrap.appendChild(sLab);
       var sSel=document.createElement("select"); sSel.style.cssText="width:100%;padding:7px 6px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);";
@@ -1579,7 +1604,7 @@ function renderPanelForm(dateStr, ev){
       if(cs!=="instruct"&&!isEdit&&!recordPicked){ renderInstructPicker(cs); }
       else { renderProductionFields(); }
 
-    } else if(cat==="shoot"){
+    } else if(cat==="shoot"||cat==="pattern"){
       var existingSeasonS = isEdit ? (ev.description && /^[0-9]{2}(SS|FW)$/.test(ev.description) ? ev.description : "") : "";
       mkStage(isEdit?ev.stage:getStages(cat)[0].value, existingSeasonS);
       mkSingleDate(isEdit?ev.date:dateStr);
@@ -1603,13 +1628,26 @@ function renderPanelForm(dateStr, ev){
   if(isEdit){
     var delBtn=document.createElement("button"); delBtn.className="danger"; delBtn.textContent="삭제";
     delBtn.addEventListener("click",function(){
+      // 투입일 삭제 시 연관된 입고예정/입고완료도 함께 삭제
+      var toDelete = [ev.id];
+      if((ev.category==="production"||ev.category==="shoot"||ev.category==="pattern") && ev.stage==="instruct"){
+        events.forEach(function(e){
+          if((["production","shoot","pattern"].indexOf(e.category)!==-1) &&
+             (e.company||"")===(ev.company||"") &&
+             (e.item||"")===(ev.item||"") &&
+             (e.stage==="expected"||e.stage==="expected_p"||e.stage==="completed"||e.stage==="completed_p")){
+            toDelete.push(e.id);
+          }
+        });
+      }
       // Optimistic 즉시 삭제
-      localDeleteEvent(ev.id);
-      renderCurrentView();
-      renderPanelList(dateStr);
+      toDelete.forEach(function(id){ localDeleteEvent(id); });
+      renderCurrentView(); renderPanelList(dateStr);
       showToast("삭제 중...");
-      apiPost({action:"delete",id:ev.id}).then(function(){
-        showToast("삭제되었습니다.");
+      // API 순차 삭제
+      var dels = toDelete.map(function(id){ return apiPost({action:"delete", id:id}); });
+      Promise.all(dels).then(function(){
+        showToast(toDelete.length > 1 ? "투입일 및 연관 일정 "+toDelete.length+"건 삭제되었습니다." : "삭제되었습니다.");
       }).catch(function(){
         showToast("삭제 실패. 새로고침 해주세요.");
         loadEvents().then(function(){ renderCurrentView(); renderPanelList(dateStr); });
@@ -1637,7 +1675,7 @@ function renderPanelForm(dateStr, ev){
     if(cat==="leave"){
       var lt = typeEl ? typeEl.value : "연차";
       descVal = (lt==="연차" && endVal && endVal !== startVal) ? lt+"||"+endVal : lt;
-    } else if(cat==="production"||cat==="shoot"){
+    } else if(cat==="production"||cat==="shoot"||cat==="pattern"){
       descVal = fields.season ? fields.season.value : "";
     } else if(endVal && endVal !== startVal){
       var rawDesc = fields.description ? fields.description.value : "";
@@ -1655,7 +1693,7 @@ function renderPanelForm(dateStr, ev){
     }
 
     // company 결정
-    var companyVal = (cat==="production"||cat==="shoot") ? (fields.company?fields.company.value:"") : "";
+    var companyVal = (cat==="production"||cat==="shoot"||cat==="pattern") ? (fields.company?fields.company.value:"") : "";
 
     var payload={
       id:isEdit?ev.id:undefined,
@@ -1712,7 +1750,7 @@ function fmtShort(dateStr){
   return p[0].slice(2)+"."+p[1]+"."+p[2];
 }
 // 캘린더 표시 텍스트: 운영/상품 그룹은 "서브카테고리 - 제목", 나머지는 제목만
-var PROD_CATS = ["production","shoot","prodetc"];
+var PROD_CATS = ["production","shoot","pattern","prodetc"];
 var OP_CATS   = ["team","other","opetc"];
 // Optimistic 업데이트: 로컬 events 배열 즉시 수정
 function localAddEvent(evObj){
@@ -1739,7 +1777,7 @@ function stripSeasonFromDesc(desc){
   return String(desc||"").replace(/^\[[0-9]{2}(?:SS|FW)\]/, "");
 }
 function getItemSeason(ev){
-  if(!ev || (ev.category!=="production" && ev.category!=="shoot")) return "";
+  if(!ev || (ev.category!=="production" && ev.category!=="shoot" && ev.category!=="pattern")) return "";
   // 자신의 description에 시즌이 있으면 그것 사용
   if(ev.description && /^[0-9]{2}(SS|FW)$/.test(String(ev.description))) return ev.description;
   // 없으면 같은 업체명+상품명의 instruct 이벤트에서 시즌 탐색
@@ -1777,7 +1815,7 @@ function getCalDisplayText(ev){
   return (s?"["+s+"]·":"")+title;
 }
 function getEventDateEnd(ev){
-  if (ev.category === "production" || ev.category === "shoot") return "";
+  if (ev.category === "production" || ev.category === "shoot" || ev.category === "pattern") return "";
   var desc = stripSeasonFromDesc(ev.description);
   var sepIdx = desc.lastIndexOf("||");
   if (sepIdx === -1) return "";
@@ -2011,7 +2049,7 @@ function renderGantt(){
       evBody.appendChild(sht);
 
       // 메인/샘플: 아이템별로 묶어서 런닝타임 한 줄 표시
-      if(catKey==="production"||catKey==="shoot"){
+      if(catKey==="production"||catKey==="shoot"||catKey==="pattern"){
         var itemGroups={};
         catEvs.forEach(function(ev){
           var gk=(ev.company||"")+"||"+(ev.item||"");
