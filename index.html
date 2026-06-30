@@ -1502,9 +1502,8 @@ function renderPanelForm(dateStr, ev){
         var sk=sq?["size","qty","cutQty"]:["size","qty"]; var sp=sq?["사이즈","수량",q4]:["사이즈","수량"];
         sk.forEach(function(k,ci){
           if(k==="size"){
-            var ss=document.createElement("select"); ss.style.cssText="font-size:14px;padding:6px 4px;width:100%;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text);font-family:inherit;";
-            SIZES.forEach(function(sz){ var o=document.createElement("option"); o.value=sz; o.textContent=sz||"사이즈"; if(v[k]===sz) o.selected=true; ss.appendChild(o); });
-            ss.addEventListener("change",function(){ v[k]=ss.value; }); row.appendChild(ss);
+            var ss=document.createElement("input"); ss.type="text"; ss.placeholder="사이즈"; ss.style.cssText="font-size:14px;padding:6px 4px;width:100%;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text);font-family:inherit;";
+            ss.value=v[k]||""; ss.addEventListener("input",function(){ v[k]=ss.value; }); row.appendChild(ss);
           } else {
             var inp=document.createElement("input"); inp.type="text"; inp.placeholder=sp[ci]; inp.value=v[k]||""; inp.addEventListener("input",function(){ v[k]=inp.value; }); row.appendChild(inp);
           }
@@ -1513,9 +1512,8 @@ function renderPanelForm(dateStr, ev){
         var ck=sq?["color","size","qty","cutQty"]:["color","size","qty"]; var cp=sq?["컬러","사이즈","수량",q4]:["컬러","사이즈","수량"];
         ck.forEach(function(k,ci){
           if(k==="size"){
-            var ss=document.createElement("select"); ss.style.cssText="font-size:14px;padding:6px 4px;width:100%;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text);font-family:inherit;";
-            SIZES.forEach(function(sz){ var o=document.createElement("option"); o.value=sz; o.textContent=sz||"사이즈"; if(v[k]===sz) o.selected=true; ss.appendChild(o); });
-            ss.addEventListener("change",function(){ v[k]=ss.value; }); row.appendChild(ss);
+            var ss=document.createElement("input"); ss.type="text"; ss.placeholder="사이즈"; ss.style.cssText="font-size:14px;padding:6px 4px;width:100%;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text);font-family:inherit;";
+            ss.value=v[k]||""; ss.addEventListener("input",function(){ v[k]=ss.value; }); row.appendChild(ss);
           } else {
             var inp=document.createElement("input"); inp.type="text"; inp.placeholder=cp[ci]; inp.value=v[k]||""; inp.addEventListener("input",function(){ v[k]=inp.value; });
             if(k==="color") inp.addEventListener("blur",function(){ renderVariantRows(); }); row.appendChild(inp);
