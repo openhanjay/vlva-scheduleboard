@@ -2966,11 +2966,22 @@ function calcGroupSubtotal(group){
   return group.rows.reduce(function(sum,r){ return sum + calcRowYogu(r); }, 0);
 }
 function calcCostTotals(costData){
-  var rawMaterialTotal = costData.groups.reduce(function(sum,g){ return sum + calcGroupSubtotal(g); }, 0);
-  var rawMaterial = rawMaterialTotal;
-  var labor = parseFloat(costData.laborCost)||0;
-  var supply = rawMaterial + labor;
-  var costPrice = supply;
+  var rawMaterial, labor, supply, supplyVat, costPrice;
+  if(costData.wansaip){
+    // 완사입: VAT+ 금액을 직접 입력, 역산으로 원가 계산
+    supplyVat = parseFloat(costData.wansaipVat)||0;
+    supply = supplyVat / 1.1;
+    rawMaterial = supply;
+    labor = 0;
+    costPrice = supply;
+  } else {
+    var rawMaterialTotal = costData.groups ? costData.groups.reduce(function(sum,g){ return sum + calcGroupSubtotal(g); }, 0) : 0;
+    rawMaterial = rawMaterialTotal;
+    labor = parseFloat(costData.laborCost)||0;
+    supply = rawMaterial + labor;
+    supplyVat = supply * 1.1;
+    costPrice = supply;
+  }
   var m1 = parseFloat(costData.multiplier1)||0;
   var m2 = parseFloat(costData.multiplier2)||0;
   var m3 = parseFloat(costData.multiplier3)||0;
@@ -2978,7 +2989,6 @@ function calcCostTotals(costData){
   var sp1 = costPrice*m1, sp2 = costPrice*m2, sp3 = costPrice*m3, sp4 = costPrice*m4;
   var sellingPrice = parseFloat(costData.sellingPrice)||0;
   var sellingMultiplier = costPrice>0 ? (sellingPrice/costPrice) : 0;
-  var supplyVat = supply * 1.1;
   return { rawMaterial:rawMaterial, labor:labor, supply:supply, supplyVat:supplyVat, costPrice:costPrice, sp1:sp1, sp2:sp2, sp3:sp3, sp4:sp4, sellingMultiplier:sellingMultiplier };
 }
 
@@ -2997,7 +3007,19 @@ function openCostModal(item){
 
   function build(){
     modal.innerHTML = "";
-    var h2 = document.createElement("h2"); h2.textContent = "원가 계산 - " + item.name; modal.appendChild(h2);
+    var h2 = document.createElement("h2");
+    // 완사입 토글 버튼
+    var wansaipBtn = document.createElement("button");
+    wansaipBtn.style.cssText = "font-size:12px;padding:4px 10px;border-radius:var(--radius-md);margin-left:10px;vertical-align:middle;"
+      + (data.wansaip ? "background:var(--color-text);color:#fff;border:1px solid var(--color-text);" : "border:1px solid var(--color-border);background:var(--color-bg);color:var(--color-text-secondary);");
+    wansaipBtn.textContent = data.wansaip ? "✓ 완사입" : "완사입";
+    wansaipBtn.addEventListener("click", function(){
+      data.wansaip = !data.wansaip;
+      build();
+    });
+    h2.textContent = "원가 계산 - " + item.name;
+    h2.appendChild(wansaipBtn);
+    modal.appendChild(h2);
 
     var topGrid = document.createElement("div"); topGrid.className = "cost-top-grid";
     function ctgBlock(label, valueEl){
@@ -3046,11 +3068,46 @@ function openCostModal(item){
       vr.appendChild(vd); cell.appendChild(vr);
       return cell;
     }
-    sumGrid.appendChild(sumCell("원부자재", totals.rawMaterial, false));
-    sumGrid.appendChild(sumCell("공임", data.laborCost||0, true, function(v){ data.laborCost = v; }));
-    sumGrid.appendChild(sumCell("원가공비", totals.supply, false));
-    sumGrid.appendChild(sumCell("원가공비 +VAT", totals.supplyVat, false));
-    modal.appendChild(sumGrid);
+    if(data.wansaip){
+      // 완사입 모드: VAT+ 금액 직접 입력
+      var wansaipGrid = document.createElement("div"); wansaipGrid.className = "cost-summary-grid";
+      wansaipGrid.style.gridTemplateColumns = "1fr 1fr";
+
+      // VAT+ 입력 셀
+      var vatCell = document.createElement("div"); vatCell.className = "cost-summary-cell";
+      var vatLr = document.createElement("div"); vatLr.className="label-row";
+      var vatLd = document.createElement("div"); vatLd.textContent = "완사입가 (VAT+)"; vatLr.appendChild(vatLd);
+      vatCell.appendChild(vatLr);
+      var vatVr = document.createElement("div"); vatVr.className="value-row";
+      var vatVd = document.createElement("div");
+      var vatInp = document.createElement("input"); vatInp.type="text";
+      vatInp.value = data.wansaipVat||"";
+      vatInp.placeholder = "VAT 포함 금액 입력";
+      vatInp.style.cssText="width:100%;border:none;text-align:center;font-size:14px;font-weight:600;background:transparent;font-family:inherit;color:var(--color-text);";
+      vatInp.addEventListener("input", function(){ data.wansaipVat = vatInp.value; });
+      vatInp.addEventListener("blur", function(){ rebuild(); });
+      vatVd.appendChild(vatInp); vatVr.appendChild(vatVd); vatCell.appendChild(vatVr);
+      wansaipGrid.appendChild(vatCell);
+
+      // 역산 원가 표시 셀
+      var costCell = document.createElement("div"); costCell.className = "cost-summary-cell";
+      var costLr = document.createElement("div"); costLr.className="label-row";
+      var costLd = document.createElement("div"); costLd.textContent = "원가 (VAT 역산)"; costLr.appendChild(costLd);
+      costCell.appendChild(costLr);
+      var costVr = document.createElement("div"); costVr.className="value-row";
+      var costVd = document.createElement("div");
+      costVd.textContent = "₩" + Math.round(totals.supply).toLocaleString();
+      costVr.appendChild(costVd); costCell.appendChild(costVr);
+      wansaipGrid.appendChild(costCell);
+      modal.appendChild(wansaipGrid);
+    } else {
+      // 일반 모드: 원부자재/공임/원가공비/+VAT
+      sumGrid.appendChild(sumCell("원부자재", totals.rawMaterial, false));
+      sumGrid.appendChild(sumCell("공임", data.laborCost||0, true, function(v){ data.laborCost = v; }));
+      sumGrid.appendChild(sumCell("원가공비", totals.supply, false));
+      sumGrid.appendChild(sumCell("원가공비 +VAT", totals.supplyVat, false));
+      modal.appendChild(sumGrid);
+    }
 
     var mrow = document.createElement("div"); mrow.className = "cost-multiplier-row";
     var lab0 = document.createElement("div"); lab0.className="cmr-label"; lab0.textContent="배수"; mrow.appendChild(lab0);
@@ -3082,7 +3139,8 @@ function openCostModal(item){
 
     function rebuild(){ build(); }
 
-    var groupsTitle = document.createElement("div"); groupsTitle.className="cost-section-title"; groupsTitle.textContent="원자재 공정"; modal.appendChild(groupsTitle);
+    // 완사입 모드에서는 원자재 공정 섹션 숨김
+    if(!data.wansaip){
 
     data.groups.forEach(function(group, gIdx){
       var gBlock = document.createElement("div"); gBlock.className = "cost-group-block";
@@ -3148,6 +3206,7 @@ function openCostModal(item){
     addGroupBtn.style.width = "100%";
     addGroupBtn.addEventListener("click", function(){ data.groups.push({ title:"새 공정", rows:[blankCostRow()] }); build(); });
     modal.appendChild(addGroupBtn);
+    } // end if(!data.wansaip)
 
     var btnRow = document.createElement("div"); btnRow.className = "cost-modal-btnrow";
     var cancelBtn = document.createElement("button"); cancelBtn.textContent = "취소";
