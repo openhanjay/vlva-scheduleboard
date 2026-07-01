@@ -219,9 +219,16 @@
   .prod-add-row input[type=text] { padding:8px 10px; border:1px solid var(--color-border); border-radius:var(--radius-md); font-size:15px; font-family:inherit; background:var(--color-bg); color:var(--color-text); width:200px; }
   .prod-add-row select { padding:8px 10px; border:1px solid var(--color-border); border-radius:var(--radius-md); font-size:14px; font-family:inherit; background:var(--color-bg); color:var(--color-text); }
   .prod-table-wrap { background:var(--color-bg); border:1px solid var(--color-border); border-radius:var(--radius-lg); overflow:hidden; }
-  table.prod-table { width:100%; border-collapse:collapse; }
-  table.prod-table th { background:var(--color-bg-tertiary); border-bottom:1px solid var(--color-border); padding:10px 8px; font-size:13px; font-weight:700; color:var(--color-text-secondary); text-align:center; white-space:nowrap; }
-  table.prod-table td { border-bottom:1px solid var(--color-border); padding:8px; font-size:14px; text-align:center; vertical-align:top; }
+  table.prod-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+  table.prod-table th { background:var(--color-bg-tertiary); border-bottom:1px solid var(--color-border); padding:10px 8px; font-size:13px; font-weight:700; color:var(--color-text-secondary); text-align:center; white-space:nowrap; overflow:hidden; }
+  table.prod-table td { border-bottom:1px solid var(--color-border); padding:8px; font-size:14px; text-align:center; vertical-align:top; overflow:hidden; }
+  table.prod-table th:nth-child(1) { width:12%; text-align:left; padding-left:14px; }  /* 아이템명 */
+  table.prod-table th:nth-child(2) { width:8%; }   /* 이미지 */
+  table.prod-table th:nth-child(3) { width:20%; }  /* 패턴 */
+  table.prod-table th:nth-child(4) { width:20%; }  /* 샘플 */
+  table.prod-table th:nth-child(5) { width:20%; }  /* 메인 */
+  table.prod-table th:nth-child(6) { width:12%; }  /* 원가계산 */
+  table.prod-table th:nth-child(7) { width:8%; }   /* 삭제 */
   table.prod-table tr:last-child td { border-bottom:none; }
   table.prod-table tr:hover td { background: var(--color-bg-secondary); }
   .prod-item-name { text-align:left !important; font-weight:600; padding-left:14px !important; vertical-align:middle !important; }
@@ -2517,6 +2524,13 @@ function buildAutoStatusCell(evList){
 
     var companyPfx = ev.company ? (ev.company + " ") : "";
     row.textContent = companyPfx + label;
+    // 메인(production) 카테고리면 클릭 시 발주수량표 팝업
+    if(ev.category === "production"){
+      row.style.cursor = "pointer";
+      row.style.textDecoration = (row.style.textDecoration || "") + (matchedCompleted ? " line-through" : "");
+      row.title = "클릭하면 발주수량표 보기";
+      (function(clickEv){ row.addEventListener("click", function(){ openOrderQtyModal(clickEv); }); })(ev);
+    }
     wrap.appendChild(row);
   });
 
@@ -2586,6 +2600,127 @@ function renderProductionTable(){
 }
 
 /* ---- 패턴/샘플/메인 일정 선택(다중 연결) 모달 ---- */
+/* ---- 발주수량표 팝업 ---- */
+function openOrderQtyModal(ev){
+  var variants = parseVariants(ev.variants);
+  var modalRoot = document.getElementById("modal-root");
+  modalRoot.innerHTML = "";
+  var overlay = document.createElement("div"); overlay.className = "modal-overlay";
+  var modal = document.createElement("div"); modal.className = "cost-modal"; modal.style.maxWidth = "560px";
+  overlay.appendChild(modal);
+  overlay.addEventListener("click", function(e){ if(e.target===overlay) modalRoot.innerHTML=""; });
+
+  // 헤더
+  var h2 = document.createElement("h2");
+  h2.textContent = "발주수량표 - " + (ev.item||"") + (ev.company ? " · "+ev.company : "");
+  modal.appendChild(h2);
+
+  var meta = document.createElement("div");
+  meta.style.cssText = "font-size:13px;color:var(--color-text-secondary);margin-bottom:14px;";
+  meta.textContent = "투입일: " + fmtDateKorean(ev.date) + (ev.description ? " · 시즌: "+ev.description : "");
+  modal.appendChild(meta);
+
+  if(!ev.variants || variants.length===0 || !variants[0].color && !variants[0].size){
+    var empty = document.createElement("div"); empty.className="panel-subtitle";
+    empty.textContent="등록된 옵션 데이터가 없습니다."; modal.appendChild(empty);
+  } else {
+    // 컬러 목록 추출 (type=color인 것)
+    var colorRows = variants.filter(function(v){ return v.type!=="size" && v.color; });
+    var colors = colorRows.map(function(v){ return v.color; }).filter(function(c,i,a){ return a.indexOf(c)===i; });
+
+    // 사이즈 목록 추출 (type=size인 것)
+    var sizeRows = variants.filter(function(v){ return v.type==="size"; });
+    var sizes = sizeRows.map(function(v){ return v.size; }).filter(function(s,i,a){ return s && a.indexOf(s)===i; });
+
+    if(colors.length > 0 && sizes.length > 0){
+      // 컬러 × 사이즈 그리드 테이블
+      var table = document.createElement("table");
+      table.style.cssText = "width:100%;border-collapse:collapse;margin-bottom:14px;";
+
+      // 헤더행: 빈칸 + 사이즈들 + 합계
+      var thead = document.createElement("thead"); var trh = document.createElement("tr");
+      var thEmpty = document.createElement("th"); thEmpty.style.cssText="background:var(--color-bg-tertiary);border:1px solid var(--color-border);padding:7px 10px;font-size:13px;"; trh.appendChild(thEmpty);
+      sizes.forEach(function(s){
+        var th = document.createElement("th"); th.textContent = s||"-";
+        th.style.cssText="background:var(--color-bg-tertiary);border:1px solid var(--color-border);padding:7px 10px;font-size:13px;font-weight:700;text-align:center;min-width:50px;";
+        trh.appendChild(th);
+      });
+      var thTotal = document.createElement("th"); thTotal.textContent="합계";
+      thTotal.style.cssText="background:var(--color-bg-secondary);border:1px solid var(--color-border);padding:7px 10px;font-size:13px;font-weight:700;text-align:center;";
+      trh.appendChild(thTotal);
+      thead.appendChild(trh); table.appendChild(thead);
+
+      var tbody = document.createElement("tbody");
+      var colTotals = {}; var grandTotal = 0;
+      sizes.forEach(function(s){ colTotals[s]=0; });
+
+      colors.forEach(function(color){
+        var tr = document.createElement("tr");
+        var tdColor = document.createElement("td"); tdColor.textContent = color;
+        tdColor.style.cssText="border:1px solid var(--color-border);padding:7px 10px;font-size:13px;font-weight:600;background:var(--color-bg-secondary);white-space:nowrap;";
+        tr.appendChild(tdColor);
+        var rowTotal = 0;
+        sizes.forEach(function(size){
+          var matched = sizeRows.filter(function(v){ return v.parentColor===color && v.size===size; });
+          var qty = matched.length > 0 ? (parseInt(matched[0].qty)||0) : 0;
+          colTotals[size] = (colTotals[size]||0) + qty;
+          rowTotal += qty; grandTotal += qty;
+          var td = document.createElement("td"); td.textContent = qty > 0 ? qty : "-";
+          td.style.cssText="border:1px solid var(--color-border);padding:7px 10px;font-size:13px;text-align:center;"+(qty>0?"font-weight:500;":"color:var(--color-text-tertiary);");
+          tr.appendChild(td);
+        });
+        var tdRowTotal = document.createElement("td"); tdRowTotal.textContent = rowTotal;
+        tdRowTotal.style.cssText="border:1px solid var(--color-border);padding:7px 10px;font-size:13px;font-weight:700;text-align:center;background:var(--color-bg-secondary);";
+        tr.appendChild(tdRowTotal);
+        tbody.appendChild(tr);
+      });
+
+      // 합계행
+      var trTotal = document.createElement("tr");
+      var tdTotalLabel = document.createElement("td"); tdTotalLabel.textContent="합계";
+      tdTotalLabel.style.cssText="border:1px solid var(--color-border);padding:7px 10px;font-size:13px;font-weight:700;background:var(--color-bg-secondary);";
+      trTotal.appendChild(tdTotalLabel);
+      sizes.forEach(function(s){
+        var td = document.createElement("td"); td.textContent = colTotals[s]||0;
+        td.style.cssText="border:1px solid var(--color-border);padding:7px 10px;font-size:13px;font-weight:700;text-align:center;background:var(--color-bg-secondary);";
+        trTotal.appendChild(td);
+      });
+      var tdGrand = document.createElement("td"); tdGrand.textContent = grandTotal;
+      tdGrand.style.cssText="border:1px solid var(--color-border);padding:7px 10px;font-size:14px;font-weight:700;text-align:center;background:var(--color-bg-tertiary);";
+      trTotal.appendChild(tdGrand);
+      tbody.appendChild(trTotal);
+      table.appendChild(tbody);
+      modal.appendChild(table);
+    } else {
+      // 사이즈 구분 없는 단순 컬러 목록
+      var table2 = document.createElement("table");
+      table2.style.cssText="width:100%;border-collapse:collapse;margin-bottom:14px;";
+      var thead2 = document.createElement("thead"); var trh2 = document.createElement("tr");
+      ["컬러","수량"].forEach(function(h){ var th=document.createElement("th"); th.textContent=h; th.style.cssText="background:var(--color-bg-tertiary);border:1px solid var(--color-border);padding:7px 10px;font-size:13px;font-weight:700;text-align:center;"; trh2.appendChild(th); });
+      thead2.appendChild(trh2); table2.appendChild(thead2);
+      var tbody2 = document.createElement("tbody"); var grandTotal2=0;
+      colorRows.forEach(function(v){
+        var tr=document.createElement("tr");
+        var td1=document.createElement("td"); td1.textContent=v.color||"-"; td1.style.cssText="border:1px solid var(--color-border);padding:7px 10px;font-size:13px;font-weight:600;background:var(--color-bg-secondary);";
+        var td2=document.createElement("td"); td2.textContent=v.qty||"-"; td2.style.cssText="border:1px solid var(--color-border);padding:7px 10px;font-size:13px;text-align:center;";
+        grandTotal2 += parseInt(v.qty)||0;
+        tr.appendChild(td1); tr.appendChild(td2); tbody2.appendChild(tr);
+      });
+      var trTot=document.createElement("tr");
+      var tdL=document.createElement("td"); tdL.textContent="합계"; tdL.style.cssText="border:1px solid var(--color-border);padding:7px 10px;font-size:13px;font-weight:700;background:var(--color-bg-secondary);";
+      var tdR=document.createElement("td"); tdR.textContent=grandTotal2; tdR.style.cssText="border:1px solid var(--color-border);padding:7px 10px;font-size:13px;font-weight:700;text-align:center;background:var(--color-bg-secondary);";
+      trTot.appendChild(tdL); trTot.appendChild(tdR); tbody2.appendChild(trTot);
+      table2.appendChild(tbody2); modal.appendChild(table2);
+    }
+  }
+
+  var btnRow = document.createElement("div"); btnRow.className="cost-modal-btnrow";
+  var closeBtn = document.createElement("button"); closeBtn.textContent="닫기";
+  closeBtn.addEventListener("click", function(){ modalRoot.innerHTML=""; });
+  btnRow.appendChild(closeBtn); modal.appendChild(btnRow);
+  modalRoot.appendChild(overlay);
+}
+
 function openLinkPicker(item, type){
   var catMap = { pattern: "pattern", shoot: "shoot", main: "production" };
   var labelMap = { pattern: "패턴", shoot: "샘플", main: "메인" };
