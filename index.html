@@ -639,6 +639,23 @@ function buildCell(dateStr, dayLabel, isOutside){
     var de=getEventDateEnd(ev);
     return !de||de<=ev.date;
   });
+  function hasExpected(ev){
+    if(ev.stage !== "instruct") return false;
+    return events.some(function(e){
+      return (e.stage==="expected"||e.stage==="expected_p") &&
+             e.category === ev.category &&
+             (e.item||"").trim().toLowerCase() === (ev.item||"").trim().toLowerCase() &&
+             e.date >= ev.date;
+    });
+  }
+  function stageOrder(ev){
+    var s = ev.stage||"";
+    if(s==="completed"||s==="completed_p") return 4;
+    if(s==="expected"||s==="expected_p") return 3;
+    if(s==="instruct") return hasExpected(ev) ? 1 : 0;
+    return 2;
+  }
+  singleEvents = singleEvents.slice().sort(function(a,b){ return stageOrder(a)-stageOrder(b); });
   singleEvents.forEach(function(ev){
     var c=CATS[ev.category]||MEMBERS[ev.category]||CATS.other;
     if(RECURRING_ITEMS.indexOf(ev.item)!==-1){
@@ -1123,6 +1140,18 @@ function renderPanelList(dateStr){
       return dateStr > e.date && dateStr <= dateEnd;
     }
     return false;
+  }).slice().sort(function(a,b){
+    function hasExp(ev){
+      if(ev.stage !== "instruct") return false;
+      return events.some(function(e){
+        return (e.stage==="expected"||e.stage==="expected_p") &&
+               e.category === ev.category &&
+               (e.item||"").trim().toLowerCase() === (ev.item||"").trim().toLowerCase() &&
+               e.date >= ev.date;
+      });
+    }
+    function so(ev){ var s=ev.stage||""; if(s==="completed"||s==="completed_p") return 4; if(s==="expected"||s==="expected_p") return 3; if(s==="instruct") return hasExp(ev)?1:0; return 2; }
+    return so(a)-so(b);
   });
   var subtitle = document.createElement("div"); subtitle.className = "panel-subtitle";
   subtitle.textContent = dayEvents.length > 0 ? "일정 " + dayEvents.length + "건" : "등록된 일정이 없습니다"; panel.appendChild(subtitle);
