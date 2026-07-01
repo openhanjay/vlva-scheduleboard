@@ -139,8 +139,8 @@
   .event-card { border-radius: 5px; margin-bottom: 4px; padding: 4px 7px; cursor: pointer; display: flex; gap: 6px; align-items: flex-start; position: relative; overflow: visible; }
   .event-card img.thumb { width: 24px; height: 24px; border-radius: 4px; object-fit: cover; flex-shrink: 0; margin-top: 1px; }
   .event-text { overflow: hidden; min-width: 0; flex: 1; }
-  .event-line1 { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .event-title { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+  .event-line1 { font-size: 12px; font-weight: 700 !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .event-title { font-size: 12px; font-weight: 700 !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
   .cell { position: relative; }
 
   .panel {
@@ -394,7 +394,7 @@ var API_URL = "https://script.google.com/macros/s/AKfycbw7isRxme_nzrVS-hQf_IttVR
 var CATS = {
   important:   { label: "중요일정", color: "#39FF14", bg: "#C8FFB0", text: "#1A6600" },
   production:  { label: "메인",     color: "#E24B4A", bg: "#FFCCCC", text: "#791F1F", text2: "#A32D2D" },
-  shoot:       { label: "샘플",     color: "#3498DB", bg: "#D6EAF8", text: "#1A5276" },
+  shoot:       { label: "샘플",     color: "#1ABC9C", bg: "#D5F5EF", text: "#0E6655" },
   pattern:     { label: "패턴",     color: "#8E44AD", bg: "#E8DAEF", text: "#4A235A" },
   prodetc:     { label: "기타",     color: "#E91E8C", bg: "#FCE4F3", text: "#8B0A52" },
   content:     { label: "컨텐츠",   color: "#1E88E5", bg: "#BBDEFB", text: "#0D47A1" },
@@ -607,7 +607,7 @@ function buildCell(dateStr, dayLabel, isOutside){
       var fullSpTxt = getCalDisplayText(activeEv) + "  " + fmtShort(activeEv.date) + "~" + fmtShort(getEventDateEnd(activeEv)||activeEv.date);
       if(isFirst){
         sp = document.createElement("span");
-        sp.style.cssText="font-size:12px;font-weight:500;color:"+c.text+";white-space:nowrap;overflow:visible;pointer-events:none;position:relative;z-index:3;";
+        sp.style.cssText="font-size:12px;font-weight:700;color:"+c.text+";white-space:nowrap;overflow:visible;pointer-events:none;position:relative;z-index:3;";
         sp.textContent = fullSpTxt;
         bar.appendChild(sp);
       }
@@ -669,17 +669,33 @@ function buildCell(dateStr, dayLabel, isOutside){
     var card=document.createElement("div"); card.className="event-card"; card.style.background=c.bg;
     if(ev.category==="production"||ev.category==="shoot"||ev.category==="pattern"){
       var textCol=document.createElement("div"); textCol.className="event-text";
-      var line1=document.createElement("div"); line1.className="event-line1"; line1.style.color=c.text;
+
       var ev_s2=getItemSeason(ev); var ev_s2pfx=ev_s2?"["+ev_s2+"] ":"";
-      var ev_order=parseProdOrder(ev.description||""); var ev_ordersfx=ev_order?" "+ev_order:"";
-      var prodTxt=stageLabel(ev.stage,ev.category)+ev_ordersfx+" · "+ev_s2pfx+(ev.item||"")+" · "+(ev.company||"");
-      line1.textContent=prodTxt;
-      card.title = prodTxt;
-      textCol.appendChild(line1); card.appendChild(textCol);
+      var rawOrder = parseProdOrder(ev.description||"");
+      var displayOrder = rawOrder ? (/^\d+$/.test(rawOrder) ? rawOrder+"차" : rawOrder) : "";
 
+      // 1줄: 단계 표시 (메인/샘플/패턴 + 단계 + 차수)
+      var catName = ev.category==="production" ? "메인" : ev.category==="shoot" ? "샘플" : "패턴";
+      var stagePart = stageLabel(ev.stage, ev.category);
+      if(ev.stage==="instruct") stagePart = "";  // 투입일은 단계명 생략 (카테고리명만)
+      var line1txt = catName + (stagePart ? " "+stagePart : "") + (displayOrder ? " "+displayOrder : "");
 
+      var line1=document.createElement("div"); line1.className="event-line1"; line1.style.color=c.text;
+      line1.textContent = line1txt;
+
+      // 2줄: 상품명 · 업체명
+      var line2=document.createElement("div");
+      line2.style.cssText="font-size:11px;font-weight:500;color:"+c.text+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0.85;margin-top:1px;";
+      line2.textContent = ev_s2pfx+(ev.item||"")+" · "+(ev.company||"");
+
+      card.title = line1txt + " · " + ev_s2pfx+(ev.item||"")+" · "+(ev.company||"");
+      textCol.appendChild(line1);
+      textCol.appendChild(line2);
+      card.appendChild(textCol);
     } else {
-      var txt=document.createElement("div"); txt.className="event-title"; txt.style.color=c.text;
+      var txt=document.createElement("div"); txt.className="event-title";
+      txt.style.color = c.text;
+      txt.style.fontWeight = "700";
       var calTxt = getCalDisplayText(ev);
       txt.textContent = calTxt;
       card.title = calTxt;
@@ -1164,7 +1180,15 @@ function renderPanelList(dateStr){
     item.style.borderColor = c.color;
     var catEl = document.createElement("div"); catEl.className = "panel-list-cat"; catEl.style.color = c.text;
     var orderTxt = (ev.category==="production"||ev.category==="shoot"||ev.category==="pattern") ? parseProdOrder(ev.description||"") : "";
-    catEl.textContent = c.label + (ev.category === "production" || ev.category === "shoot" || ev.category === "pattern" ? " · " + stageLabel(ev.stage, ev.category) : "") + (orderTxt ? " " + orderTxt : "");
+    var displayOrderTxt = orderTxt ? (/^\d+$/.test(orderTxt) ? orderTxt+"차" : orderTxt) : "";
+    var catName2 = ev.category==="production" ? "메인" : ev.category==="shoot" ? "샘플" : ev.category==="pattern" ? "패턴" : "";
+    var panelStageLbl = "";
+    if(ev.category==="production"||ev.category==="shoot"||ev.category==="pattern"){
+      if(ev.stage!=="instruct") panelStageLbl = stageLabel(ev.stage, ev.category);
+      catEl.textContent = c.label + " · " + catName2 + (panelStageLbl ? " "+panelStageLbl : "") + (displayOrderTxt ? " "+displayOrderTxt : "");
+    } else {
+      catEl.textContent = c.label;
+    }
     item.appendChild(catEl);
     var mainEl = document.createElement("div"); mainEl.className = "panel-list-main";
     if (ev.category === "production" || ev.category === "shoot" || ev.category === "pattern"){
@@ -2112,7 +2136,7 @@ function renderGantt(){
           }
           var barW=(ei-si+1)*COL_W-4;
           var bar=document.createElement("div");
-          bar.style.cssText="position:absolute;left:"+(si*COL_W)+"px;width:"+barW+"px;top:6px;bottom:6px;background:"+ci.bg+";border-left:3px solid "+ci.color+";border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:11px;font-weight:500;color:"+ci.text+";white-space:nowrap;overflow:visible;cursor:pointer;z-index:1;";
+          bar.style.cssText="position:absolute;left:"+(si*COL_W)+"px;width:"+barW+"px;top:6px;bottom:6px;background:"+ci.bg+";border-left:3px solid "+ci.color+";border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:11px;font-weight:700;color:"+ci.text+";white-space:nowrap;overflow:visible;cursor:pointer;z-index:1;";
           bar.textContent=labelTxt+"  "+fmtShort(minDate)+"~"+fmtShort(maxDate);
           bar.addEventListener("click",function(){ switchToCalendar(minDate); });
           tr.appendChild(bar);
@@ -2150,7 +2174,7 @@ function renderGantt(){
           tr.appendChild(tl2);
         }
         var bar=document.createElement("div");
-        bar.style.cssText="position:absolute;left:"+(si*COL_W)+"px;width:"+((ei-si+1)*COL_W-4)+"px;top:5px;bottom:5px;background:"+ci.bg+";border-left:3px solid "+ci.color+";border-radius:4px;display:flex;align-items:center;padding:0 7px;font-size:11px;font-weight:500;color:"+ci.text+";white-space:nowrap;overflow:visible;cursor:pointer;z-index:1;";
+        bar.style.cssText="position:absolute;left:"+(si*COL_W)+"px;width:"+((ei-si+1)*COL_W-4)+"px;top:5px;bottom:5px;background:"+ci.bg+";border-left:3px solid "+ci.color+";border-radius:4px;display:flex;align-items:center;padding:0 7px;font-size:11px;font-weight:700;color:"+ci.text+";white-space:nowrap;overflow:visible;cursor:pointer;z-index:1;";
         bar.textContent=txt;
         bar.addEventListener("click",function(){ switchToCalendar(es); });
         tr.appendChild(bar);
@@ -2482,7 +2506,17 @@ function loadProdItems(){
   loadProdItemsLocal();
   return apiGet("prodItems").then(function(data){
     if(data && Array.isArray(data.items) && data.items.length > 0){
-      prodItems = data.items;
+      // 로컬에 있는 memoLog/memo/order 보존 (서버에는 없음)
+      var localMap = {};
+      prodItems.forEach(function(p){ localMap[p.id] = p; });
+      prodItems = data.items.map(function(item){
+        var local = localMap[item.id];
+        if(local){
+          if(local.memoLog && local.memoLog.length > 0) item.memoLog = local.memoLog;
+          if(local.memo) item.memo = local.memo;
+        }
+        return item;
+      });
       sortProdItemsRecentFirst();
       saveProdItemsLocal();
     }
