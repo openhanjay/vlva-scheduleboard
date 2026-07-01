@@ -247,7 +247,7 @@
   .cost-top-grid .ctg-label { background:var(--color-bg-tertiary); font-size:12px; font-weight:700; text-align:center; padding:6px 0; color:var(--color-text-secondary); }
   .cost-top-grid .ctg-value { padding:8px; }
   .cost-top-grid .ctg-value input, .cost-top-grid .ctg-value select { width:100%; border:none; text-align:center; font-size:14px; font-family:inherit; background:transparent; color:var(--color-text); }
-  .cost-summary-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:0; border:1px solid var(--color-border); border-radius:var(--radius-md); overflow:hidden; margin-bottom:14px; }
+  .cost-summary-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:0; border:1px solid var(--color-border); border-radius:var(--radius-md); overflow:hidden; margin-bottom:14px; }
   .cost-summary-cell { border-right:1px solid var(--color-border); }
   .cost-summary-cell:last-child { border-right:none; }
   .cost-summary-cell .label-row { display:grid; grid-template-columns: 1fr; background:var(--color-bg-tertiary); }
@@ -2551,7 +2551,8 @@ function renderProductionTable(){
     var costObj = costDataMap[item.id];
     if(costObj && costObj.finalUnitPrice){
       var line1 = document.createElement("div");
-      line1.textContent = "원가 ₩" + Number(costObj.finalUnitPrice).toLocaleString();
+      var vatVal = costObj.supplyVat || Math.round((costObj.finalUnitPrice || 0) * 1.1);
+      line1.textContent = "+VAT ₩" + Number(vatVal).toLocaleString();
       var line2 = document.createElement("div");
       line2.style.cssText = "font-size:12px;color:var(--color-text-secondary);margin-top:2px;";
       var sellingPriceVal = parseFloat(costObj.sellingPrice) || 0;
@@ -2665,7 +2666,7 @@ function blankCostData(itemId, itemName, season){
     itemName: itemName,
     season: season || "",
     referenceUrl: "",
-    multiplier1: "3", multiplier2: "3.3", multiplier3: "3.8", multiplier4: "4",
+    multiplier1: "3.5", multiplier2: "4", multiplier3: "4.5", multiplier4: "5",
     sellingPrice: "",
     laborCost: "0",
     groups: [
@@ -2698,7 +2699,8 @@ function calcCostTotals(costData){
   var sp1 = costPrice*m1, sp2 = costPrice*m2, sp3 = costPrice*m3, sp4 = costPrice*m4;
   var sellingPrice = parseFloat(costData.sellingPrice)||0;
   var sellingMultiplier = costPrice>0 ? (sellingPrice/costPrice) : 0;
-  return { rawMaterial:rawMaterial, labor:labor, supply:supply, costPrice:costPrice, sp1:sp1, sp2:sp2, sp3:sp3, sp4:sp4, sellingMultiplier:sellingMultiplier };
+  var supplyVat = supply * 1.1;
+  return { rawMaterial:rawMaterial, labor:labor, supply:supply, supplyVat:supplyVat, costPrice:costPrice, sp1:sp1, sp2:sp2, sp3:sp3, sp4:sp4, sellingMultiplier:sellingMultiplier };
 }
 
 function openCostModal(item){
@@ -2768,6 +2770,7 @@ function openCostModal(item){
     sumGrid.appendChild(sumCell("원부자재", totals.rawMaterial, false));
     sumGrid.appendChild(sumCell("공임", data.laborCost||0, true, function(v){ data.laborCost = v; }));
     sumGrid.appendChild(sumCell("원가공비", totals.supply, false));
+    sumGrid.appendChild(sumCell("원가공비 +VAT", totals.supplyVat, false));
     modal.appendChild(sumGrid);
 
     var mrow = document.createElement("div"); mrow.className = "cost-multiplier-row";
@@ -2875,6 +2878,7 @@ function openCostModal(item){
     doneBtn.addEventListener("click", function(){
       var finalTotals = calcCostTotals(data);
       data.finalUnitPrice = Math.round(finalTotals.costPrice);
+      data.supplyVat = Math.round(finalTotals.supplyVat);
       data.rawMaterialTotal = finalTotals.rawMaterial;
       data.laborCost = data.laborCost || 0;
       data.supplyTotal = finalTotals.supply;
