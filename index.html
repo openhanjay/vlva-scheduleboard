@@ -674,11 +674,11 @@ function buildCell(dateStr, dayLabel, isOutside){
       var rawOrder = parseProdOrder(ev.description||"");
       var displayOrder = rawOrder ? (/^\d+$/.test(rawOrder) ? rawOrder+"차" : rawOrder) : "";
 
-      // 1줄: 단계 표시 (메인/샘플/패턴 + 단계 + 차수)
+      // 1줄: 차수 + 카테고리명 + 단계
       var catName = ev.category==="production" ? "메인" : ev.category==="shoot" ? "샘플" : "패턴";
       var stagePart = stageLabel(ev.stage, ev.category);
-      if(ev.stage==="instruct") stagePart = "";  // 투입일은 단계명 생략 (카테고리명만)
-      var line1txt = catName + (stagePart ? " "+stagePart : "") + (displayOrder ? " "+displayOrder : "");
+      if(ev.stage==="instruct") stagePart = "";
+      var line1txt = (displayOrder ? displayOrder+" " : "") + catName + (stagePart ? " "+stagePart : "");
 
       var line1=document.createElement("div"); line1.className="event-line1"; line1.style.color=c.text;
       line1.textContent = line1txt;
@@ -1185,7 +1185,7 @@ function renderPanelList(dateStr){
     var panelStageLbl = "";
     if(ev.category==="production"||ev.category==="shoot"||ev.category==="pattern"){
       if(ev.stage!=="instruct") panelStageLbl = stageLabel(ev.stage, ev.category);
-      catEl.textContent = c.label + " · " + catName2 + (panelStageLbl ? " "+panelStageLbl : "") + (displayOrderTxt ? " "+displayOrderTxt : "");
+      catEl.textContent = c.label + " · " + (displayOrderTxt ? displayOrderTxt+" " : "") + catName2 + (panelStageLbl ? " "+panelStageLbl : "");
     } else {
       catEl.textContent = c.label;
     }
