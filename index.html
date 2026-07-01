@@ -223,16 +223,16 @@
   table.prod-table th { background:var(--color-bg-tertiary); border-bottom:1px solid var(--color-border); padding:10px 8px; font-size:13px; font-weight:700; color:var(--color-text-secondary); text-align:center; white-space:nowrap; overflow:hidden; }
   table.prod-table td { border-bottom:1px solid var(--color-border); padding:8px; font-size:14px; text-align:center; vertical-align:top; overflow:hidden; }
   table.prod-table th:nth-child(1) { width:12%; text-align:left; padding-left:14px; }  /* 아이템명 */
-  table.prod-table th:nth-child(2) { width:7%; }   /* 차수 */
+  table.prod-table th:nth-child(2) { width:13%; }   /* 메모 */
   table.prod-table th:nth-child(3) { width:7%; }   /* 이미지 */
   table.prod-table th:nth-child(4) { width:18%; }  /* 패턴 */
   table.prod-table th:nth-child(5) { width:18%; }  /* 샘플 */
   table.prod-table th:nth-child(6) { width:18%; }  /* 메인 */
   table.prod-table th:nth-child(7) { width:12%; }  /* 원가계산 */
   table.prod-table th:nth-child(8) { width:8%; }   /* 삭제 */
-  .prod-order-cell { font-size:13px; color:var(--color-text-secondary); cursor:pointer; padding:4px 6px; border-radius:var(--radius-md); min-width:40px; display:inline-block; text-align:center; }
-  .prod-order-cell:hover { background:var(--color-bg-tertiary); }
-  .prod-order-input { font-size:13px; padding:4px 6px; border:1px solid var(--color-border); border-radius:var(--radius-md); width:60px; text-align:center; font-family:inherit; background:var(--color-bg); color:var(--color-text); }
+  .prod-memo-btn { font-size:18px; background:none; border:none; cursor:pointer; padding:4px; color:var(--color-text-tertiary); line-height:1; }
+  .prod-memo-btn:hover { color:var(--color-text); background:none; }
+  .prod-memo-btn.has-memo { color:#F4A836; }
   table.prod-table tr:last-child td { border-bottom:none; }
   table.prod-table tr:hover td { background: var(--color-bg-secondary); }
   .prod-item-name { text-align:left !important; font-weight:600; padding-left:14px !important; vertical-align:middle !important; }
@@ -370,7 +370,7 @@
       <thead>
         <tr>
           <th style="text-align:left;padding-left:14px;">아이템명</th>
-          <th>차수</th>
+          <th>메모</th>
           <th>이미지</th>
           <th>패턴</th>
           <th>샘플</th>
@@ -1182,35 +1182,14 @@ function renderPanelList(dateStr){
       });
       var hasAnyRows = colorOrder.length > 0 || sizeOnlyRows.length > 0;
       if (hasAnyRows){
-        var showQty4 = ev.stage !== "instruct";
-        var qty4Label = (ev.stage === "completed" || ev.stage === "completed_p") ? "입고수량" : "예정수량";
-        var table = document.createElement("table"); table.className = "panel-variant-table";
-        var thead = document.createElement("thead"); var trHead = document.createElement("tr");
-        var headerCols = showQty4 ? ["컬러","사이즈","수량",qty4Label] : ["컬러","사이즈","수량"];
-        headerCols.forEach(function(h){ var th = document.createElement("th"); th.textContent = h; trHead.appendChild(th); });
-        thead.appendChild(trHead); table.appendChild(thead);
-        var tbody = document.createElement("tbody");
-        colorOrder.forEach(function(c){
-          var rows = colorGroups[c];
-          rows.forEach(function(r, ri){
-            var tr = document.createElement("tr");
-            if (ri === 0){ var tdColor = document.createElement("td"); tdColor.className = "pvt-color"; tdColor.textContent = c || "-"; tdColor.rowSpan = rows.length; tr.appendChild(tdColor); }
-            var tdSize = document.createElement("td"); tdSize.textContent = r.size || "-"; tr.appendChild(tdSize);
-            var tdQty = document.createElement("td"); tdQty.textContent = r.qty || "-"; tr.appendChild(tdQty);
-            if (showQty4){ var tdCutQty = document.createElement("td"); tdCutQty.textContent = r.cutQty || "-"; tr.appendChild(tdCutQty); }
-            tbody.appendChild(tr);
-          });
+        var qtyBtn = document.createElement("button");
+        qtyBtn.textContent = "📦 수량 확인";
+        qtyBtn.style.cssText = "margin-top:6px;width:100%;font-size:12px;padding:5px 0;border:1px solid var(--color-border);color:var(--color-text-secondary);background:var(--color-bg-secondary);border-radius:var(--radius-md);cursor:pointer;";
+        qtyBtn.addEventListener("click", function(e){
+          e.stopPropagation();
+          openOrderQtyModal(ev);
         });
-        sizeOnlyRows.forEach(function(r){
-          var tr = document.createElement("tr");
-          var tdColor = document.createElement("td"); tdColor.className = "pvt-color"; tdColor.textContent = "-"; tr.appendChild(tdColor);
-          var tdSize = document.createElement("td"); tdSize.textContent = r.size || "-"; tr.appendChild(tdSize);
-          var tdQty = document.createElement("td"); tdQty.textContent = r.qty || "-"; tr.appendChild(tdQty);
-          if (showQty4){ var tdCutQty = document.createElement("td"); tdCutQty.textContent = r.cutQty || "-"; tr.appendChild(tdCutQty); }
-          tbody.appendChild(tr);
-        });
-        table.appendChild(tbody);
-        var variantWrap = document.createElement("div"); variantWrap.className = "panel-list-variant-wrap"; variantWrap.appendChild(table); item.appendChild(variantWrap);
+        item.appendChild(qtyBtn);
       }
     }
     if((ev.category==="production"||ev.category==="shoot"||ev.category==="pattern") &&
@@ -1310,20 +1289,14 @@ function renderPanelList(dateStr){
         remainTitle.textContent = "📦 잔여 수량";
         remainCard.appendChild(remainTitle);
 
-        var tbl = document.createElement("table");
-        tbl.className = "panel-variant-table"; tbl.style.marginBottom = "10px";
-        var thead = document.createElement("thead"); var trH = document.createElement("tr");
-        ["컬러","사이즈","잔여"].forEach(function(h){ var th=document.createElement("th"); th.textContent=h; trH.appendChild(th); });
-        thead.appendChild(trH); tbl.appendChild(thead);
-        var tbody = document.createElement("tbody");
-        remaining.forEach(function(r){
-          var tr = document.createElement("tr");
-          var c1=document.createElement("td"); c1.className="pvt-color"; c1.textContent=(r.type==="size"?(r.parentColor||"-"):r.color)||"-"; tr.appendChild(c1);
-          var c2=document.createElement("td"); c2.textContent=r.size||"-"; tr.appendChild(c2);
-          var c3=document.createElement("td"); c3.textContent=r.qty; tr.appendChild(c3);
-          tbody.appendChild(tr);
+        var remainBtn = document.createElement("button");
+        remainBtn.textContent = "📦 잔여수량 확인";
+        remainBtn.style.cssText = "width:100%;font-size:12px;padding:5px 0;border:1px solid var(--color-border);color:var(--color-text-secondary);background:var(--color-bg);border-radius:var(--radius-md);cursor:pointer;margin-bottom:8px;";
+        remainBtn.addEventListener("click", function(e){
+          e.stopPropagation();
+          openOrderQtyModal(Object.assign({}, ev, {variants: stringifyVariants(remaining), _title: "잔여 수량"}));
         });
-        tbl.appendChild(tbody); remainCard.appendChild(tbl);
+        remainCard.appendChild(remainBtn);
 
         var dateRow = document.createElement("div"); dateRow.style.cssText="display:flex;gap:8px;align-items:center;";
         var dateLab = document.createElement("div"); dateLab.className="field-label"; dateLab.style.cssText="margin:0;white-space:nowrap;font-size:13px;"; dateLab.textContent="입고 예정일";
@@ -2658,31 +2631,32 @@ function renderProductionTable(){
     tdName.innerHTML = item.name + (item.season ? '<span class="prod-season-tag">'+item.season+'</span>' : "");
     tr.appendChild(tdName);
 
-    // 차수 셀 (클릭 시 인라인 입력)
-    var tdOrder = document.createElement("td"); tdOrder.style.textAlign="center";
-    var orderSpan = document.createElement("span"); orderSpan.className = "prod-order-cell";
-    orderSpan.textContent = item.order || "—";
-    orderSpan.title = "클릭해서 차수 입력";
-    orderSpan.addEventListener("click", function(){
-      var inp = document.createElement("input"); inp.className = "prod-order-input";
-      inp.type = "text"; inp.value = item.order || "";
-      inp.placeholder = "예: 1차";
-      tdOrder.innerHTML = ""; tdOrder.appendChild(inp);
-      inp.focus(); inp.select();
-      function save(){
-        item.order = inp.value.trim();
-        saveProdItemsLocal();
-        renderProductionTable();
-        apiPost({action:"createProdItem", data:item}).catch(function(){});
-      }
-      inp.addEventListener("blur", save);
-      inp.addEventListener("keydown", function(e){
-        if(e.key==="Enter") save();
-        if(e.key==="Escape"){ item.order=item.order||""; renderProductionTable(); }
-      });
-    });
-    tdOrder.appendChild(orderSpan);
-    tr.appendChild(tdOrder);
+    // 메모 셀
+    var tdMemo = document.createElement("td"); tdMemo.style.cssText="text-align:left;padding-left:6px;";
+    var hasMemo = (item.memoLog && item.memoLog.length > 0) || (item.memo && item.memo.trim());
+    var memoBtn = document.createElement("button");
+    memoBtn.className = "prod-memo-btn" + (hasMemo ? " has-memo" : "");
+    memoBtn.style.cssText = "display:flex;align-items:center;gap:5px;font-size:13px;white-space:nowrap;overflow:hidden;max-width:100%;";
+    memoBtn.title = hasMemo ? "메모 보기/추가" : "메모 추가";
+
+    var iconSpan = document.createElement("span"); iconSpan.style.fontSize="15px"; iconSpan.textContent="📝";
+    memoBtn.appendChild(iconSpan);
+
+    if(hasMemo){
+      // 가장 최신(마지막) 메모의 첫 줄 추출
+      var latestLog = item.memoLog && item.memoLog.length > 0 ? item.memoLog[item.memoLog.length-1] : null;
+      var previewText = latestLog ? latestLog.text : (item.memo||"");
+      var firstLine = previewText.split("\n")[0].trim();
+      if(firstLine.length > 18) firstLine = firstLine.substring(0,18) + "...";
+      var previewSpan = document.createElement("span");
+      previewSpan.style.cssText="font-size:12px;color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;";
+      previewSpan.textContent = firstLine;
+      memoBtn.appendChild(previewSpan);
+    }
+
+    memoBtn.addEventListener("click", function(){ openMemoModal(item); });
+    tdMemo.appendChild(memoBtn);
+    tr.appendChild(tdMemo);
 
     var tdImage = document.createElement("td"); tdImage.appendChild(buildImageCell(item)); tr.appendChild(tdImage);
 
@@ -2741,7 +2715,7 @@ function openOrderQtyModal(ev){
   overlay.addEventListener("click", function(e){ if(e.target===overlay) modalRoot.innerHTML=""; });
 
   var h2 = document.createElement("h2");
-  h2.textContent = "발주수량표 - " + (ev.item||"") + (ev.company ? " · "+ev.company : "");
+  h2.textContent = (ev._title || "발주수량표") + " - " + (ev.item||"") + (ev.company ? " · "+ev.company : "");
   modal.appendChild(h2);
 
   var meta = document.createElement("div");
@@ -2863,6 +2837,144 @@ function openOrderQtyModal(ev){
   closeBtn.addEventListener("click", function(){ modalRoot.innerHTML=""; });
   btnRow.appendChild(closeBtn); modal.appendChild(btnRow);
   modalRoot.appendChild(overlay);
+}
+
+/* ---- 메모 팝업 ---- */
+function openMemoModal(item){
+  // item.memo를 배열로 관리 (기존 문자열이면 마이그레이션)
+  if(!item.memoLog) item.memoLog = [];
+  if(item.memo && typeof item.memo === "string" && item.memo.trim()){
+    // 기존 단일 메모를 로그로 마이그레이션
+    item.memoLog = [{ text: item.memo, ts: "" }];
+    item.memo = "";
+  }
+
+  var modalRoot = document.getElementById("modal-root");
+  modalRoot.innerHTML = "";
+  var overlay = document.createElement("div"); overlay.className = "modal-overlay";
+  var modal = document.createElement("div"); modal.className = "cost-modal"; modal.style.maxWidth = "560px";
+  overlay.appendChild(modal);
+  overlay.addEventListener("click", function(e){ if(e.target===overlay) modalRoot.innerHTML=""; });
+
+  var h2 = document.createElement("h2"); h2.textContent = "📝 메모 - " + item.name; modal.appendChild(h2);
+
+  // 기존 메모 로그 표시
+  if(item.memoLog.length > 0){
+    var logWrap = document.createElement("div");
+    logWrap.style.cssText = "max-height:260px;overflow-y:auto;margin-bottom:14px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg-secondary);padding:10px 14px;";
+
+    // 최신순으로 역순 표시 (인덱스는 원본 배열 기준)
+    item.memoLog.slice().reverse().forEach(function(entry, revIdx){
+      var realIdx = item.memoLog.length - 1 - revIdx;
+      var entryDiv = document.createElement("div");
+      entryDiv.style.cssText = "padding:8px 0;border-bottom:1px solid var(--color-border);";
+
+      // 타임스탬프 + 수정/삭제 버튼 행
+      var topRow = document.createElement("div");
+      topRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;";
+
+      var tsEl = document.createElement("span");
+      tsEl.style.cssText = "font-size:11px;color:var(--color-text-tertiary);";
+      tsEl.textContent = entry.ts || "";
+      topRow.appendChild(tsEl);
+
+      var actionRow = document.createElement("div");
+      actionRow.style.cssText = "display:flex;gap:6px;";
+
+      var editBtn = document.createElement("button");
+      editBtn.textContent = "수정";
+      editBtn.style.cssText = "font-size:11px;padding:2px 7px;border:1px solid var(--color-border);border-radius:4px;background:var(--color-bg);cursor:pointer;color:var(--color-text-secondary);";
+      (function(idx, ent){
+        editBtn.addEventListener("click", function(){
+          // 텍스트를 인라인 textarea로 교체
+          var editArea = document.createElement("textarea");
+          editArea.value = ent.text;
+          editArea.style.cssText = "width:100%;min-height:80px;padding:8px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:14px;font-family:inherit;background:var(--color-bg);color:var(--color-text);resize:vertical;line-height:1.6;margin-top:4px;";
+          textEl.replaceWith(editArea);
+          editArea.focus();
+
+          var confirmBtn = document.createElement("button");
+          confirmBtn.textContent = "확인";
+          confirmBtn.style.cssText = "font-size:11px;padding:2px 7px;border:1px solid var(--color-text);border-radius:4px;background:var(--color-text);color:#fff;cursor:pointer;margin-top:4px;";
+          confirmBtn.addEventListener("click", function(){
+            var newText = editArea.value.trim();
+            if(!newText){ showToast("내용을 입력해주세요."); return; }
+            item.memoLog[idx].text = newText;
+            saveProdItemsLocal();
+            apiPost({action:"createProdItem", data:item}).catch(function(){});
+            openMemoModal(item);
+          });
+          entryDiv.appendChild(confirmBtn);
+          editBtn.style.display = "none";
+        });
+      })(realIdx, entry);
+      actionRow.appendChild(editBtn);
+
+      var delBtn = document.createElement("button");
+      delBtn.textContent = "삭제";
+      delBtn.style.cssText = "font-size:11px;padding:2px 7px;border:1px solid var(--sun-color);border-radius:4px;background:var(--color-bg);cursor:pointer;color:var(--sun-color);";
+      (function(idx){
+        delBtn.addEventListener("click", function(){
+          if(!confirm("이 메모를 삭제할까요?")) return;
+          item.memoLog.splice(idx, 1);
+          saveProdItemsLocal();
+          renderProductionTable();
+          apiPost({action:"createProdItem", data:item}).catch(function(){});
+          openMemoModal(item);
+        });
+      })(realIdx);
+      actionRow.appendChild(delBtn);
+
+      topRow.appendChild(actionRow);
+      entryDiv.appendChild(topRow);
+
+      var textEl = document.createElement("div");
+      textEl.style.cssText = "font-size:14px;color:var(--color-text);white-space:pre-wrap;line-height:1.6;";
+      textEl.textContent = entry.text;
+      entryDiv.appendChild(textEl);
+      logWrap.appendChild(entryDiv);
+    });
+
+    if(logWrap.lastChild) logWrap.lastChild.style.borderBottom = "none";
+    modal.appendChild(logWrap);
+  }
+
+  // 새 메모 입력
+  var newLabel = document.createElement("div");
+  newLabel.className = "field-label"; newLabel.textContent = "새 메모 추가";
+  modal.appendChild(newLabel);
+
+  var textarea = document.createElement("textarea");
+  textarea.placeholder = "메모를 입력하세요...";
+  textarea.style.cssText = "width:100%;min-height:120px;padding:10px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:14px;font-family:inherit;background:var(--color-bg);color:var(--color-text);resize:vertical;line-height:1.6;margin-bottom:14px;";
+  modal.appendChild(textarea);
+
+  var btnRow = document.createElement("div"); btnRow.className = "cost-modal-btnrow";
+
+  var cancelBtn = document.createElement("button"); cancelBtn.textContent = "닫기";
+  cancelBtn.addEventListener("click", function(){ modalRoot.innerHTML=""; });
+  btnRow.appendChild(cancelBtn);
+
+  var saveBtn = document.createElement("button"); saveBtn.className = "primary"; saveBtn.textContent = "저장";
+  saveBtn.addEventListener("click", function(){
+    var text = textarea.value.trim();
+    if(!text){ showToast("메모를 입력해주세요."); return; }
+    var now = new Date();
+    var ts = now.getFullYear() + "." + String(now.getMonth()+1).padStart(2,"0") + "." + String(now.getDate()).padStart(2,"0")
+      + " " + String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
+    item.memoLog.push({ text: text, ts: ts });
+    saveProdItemsLocal();
+    renderProductionTable();
+    showToast("메모가 저장되었습니다.");
+    apiPost({action:"createProdItem", data:item}).catch(function(){});
+    // 팝업 갱신
+    openMemoModal(item);
+  });
+  btnRow.appendChild(saveBtn);
+  modal.appendChild(btnRow);
+  modalRoot.appendChild(overlay);
+
+  setTimeout(function(){ textarea.focus(); }, 50);
 }
 
 function openLinkPicker(item, type){
