@@ -2453,39 +2453,73 @@ function getProdStatusForItem(itemName){
 }
 
 function findRelatedStageEvent(baseEv, stages){
-  // 같은 카테고리/업체명/아이템명을 가진 expected 또는 completed 이벤트 탐색 (최신 우선)
+  // 같은 카테고리/업체명/아이템명 + 투입일(baseEv.date) 이후 날짜인 이벤트만 탐색
   var found = events.filter(function(e){
     if(e.category !== baseEv.category) return false;
     if((e.company||"") !== (baseEv.company||"")) return false;
     if((e.item||"") !== (baseEv.item||"")) return false;
+    if(e.date < baseEv.date) return false; // 투입일보다 이전 날짜는 제외
     return stages.indexOf(e.stage) !== -1;
   }).sort(function(a,b){ return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
   return found.length ? found[0] : null;
 }
 
 function buildAutoStatusCell(evList){
-  // 패턴/샘플/메인: 아이템명 자동 매칭, 업체명 표시, 입고예정/완료 범위 표시
   var wrap = document.createElement("div");
   if(!evList || evList.length === 0){
     wrap.innerHTML = '<span style="color:var(--color-text-tertiary);">-</span>';
     return wrap;
   }
-  evList.forEach(function(ev){
+
+  // 투입일을 날짜 오름차순으로 정렬 (오래된 것부터 차례로 처리)
+  var sorted = evList.slice().sort(function(a,b){ return a.date < b.date ? -1 : 1; });
+
+  // 같은 카테고리+아이템명의 예정/완료 이벤트 전체를 날짜 오름차순으로 준비 (업체명 무관)
+  var baseEv = sorted[0];
+  var allExpected = events.filter(function(e){
+    if(e.category !== baseEv.category) return false;
+    if((e.item||"") !== (baseEv.item||"")) return false;
+    return e.stage==="expected"||e.stage==="expected_p"||e.stage==="completed"||e.stage==="completed_p";
+  }).sort(function(a,b){ return a.date < b.date ? -1 : 1; });
+
+  var usedIds = {};
+
+  sorted.forEach(function(ev){
     var row = document.createElement("div"); row.className = "prod-status-cell";
     var label = fmtShort(ev.date);
-    var completedEv = findRelatedStageEvent(ev, ["completed","completed_p"]);
-    var expectedEv = findRelatedStageEvent(ev, ["expected","expected_p"]);
-    if(completedEv){
-      label = fmtShort(ev.date) + " ~ " + fmtShort(completedEv.date) + "(완료)";
+
+    // 이 투입일 이후이면서 업체명이 일치(또는 예정일에 업체명 없음)하고 아직 사용 안 된 것 찾기
+    var matchedCompleted = null, matchedExpected = null;
+    for(var i=0; i<allExpected.length; i++){
+      var e = allExpected[i];
+      if(usedIds[e.id]) continue;
+      if(e.date < ev.date) continue;
+      // 업체명이 있으면 일치하는 것만, 없으면 아이템명만으로 매칭
+      var companyMatch = !ev.company || !e.company || (e.company||"") === (ev.company||"");
+      if(!companyMatch) continue;
+      if(e.stage==="completed"||e.stage==="completed_p"){ matchedCompleted = e; break; }
+      if((e.stage==="expected"||e.stage==="expected_p") && !matchedExpected) matchedExpected = e;
+    }
+    // 완료보다 예정이 더 가까우면 예정 우선 (완료가 예정보다 날짜가 나중일 수 있음)
+    if(matchedCompleted && matchedExpected && matchedExpected.date <= matchedCompleted.date){
+      matchedCompleted = null;
+    }
+
+    if(matchedCompleted){
+      label = fmtShort(ev.date) + " ~ " + fmtShort(matchedCompleted.date) + "(완료)";
       row.style.textDecoration = "line-through";
       row.style.color = "var(--color-text-tertiary)";
-    } else if(expectedEv){
-      label = fmtShort(ev.date) + " ~ " + fmtShort(expectedEv.date) + "(예정)";
+      usedIds[matchedCompleted.id] = true;
+    } else if(matchedExpected){
+      label = fmtShort(ev.date) + " ~ " + fmtShort(matchedExpected.date) + "(예정)";
+      usedIds[matchedExpected.id] = true;
     }
+
     var companyPfx = ev.company ? (ev.company + " ") : "";
     row.textContent = companyPfx + label;
     wrap.appendChild(row);
   });
+
   return wrap;
 }
 
