@@ -2080,7 +2080,76 @@ function renderGantt(){
     labelBody.innerHTML = "";
     evBody.innerHTML = "";
     var groupOrder = Object.keys(CATS).concat(Object.keys(MEMBERS));
+    // 시즌은 맨 위, 상품/기타는 맨 아래
+    groupOrder = groupOrder.filter(function(k){ return k!=="production"&&k!=="shoot"&&k!=="pattern"&&k!=="prodetc"; });
+    groupOrder.unshift("__season__"); // 시즌 맨 위
+    groupOrder.push("production","shoot","pattern","__prodetc__"); // 상품+기타 맨 아래
     groupOrder.forEach(function(catKey){
+      // 시즌 섹션 헤더 (빈 섹션)
+      if(catKey === "__season__"){
+        var seasonSh = document.createElement("div");
+        seasonSh.style.cssText = "height:24px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:700;color:var(--color-text-secondary);";
+        seasonSh.textContent = "시즌";
+        labelBody.appendChild(seasonSh);
+        var seasonSht = document.createElement("div");
+        seasonSht.style.cssText = "height:24px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);position:relative;";
+        if(todayDayIdx>=0&&todayDayIdx<totalDays){
+          var tlSeason=document.createElement("div"); tlSeason.style.cssText="position:absolute;left:"+(todayDayIdx*COL_W+COL_W/2)+"px;top:0;bottom:0;width:1px;background:rgba(26,26,24,0.15);";
+          seasonSht.appendChild(tlSeason);
+        }
+        evBody.appendChild(seasonSht);
+        return;
+      }
+
+      // 기타 섹션 (개별 행으로 표시)
+      if(catKey === "__prodetc__"){
+        var prodetcEvs = events.filter(function(e){
+          if(e.category!=="prodetc") return false;
+          if(RECUR.indexOf(e.item)!==-1) return false;
+          var es=e.date, ee=getEventDateEnd(e)||e.date;
+          var sm=parseInt(es.substring(0,4))*12+parseInt(es.substring(5,7))-1;
+          var em=parseInt(ee.substring(0,4))*12+parseInt(ee.substring(5,7))-1;
+          for(var vm=sm;vm<=em;vm++){ if(visMonths[vm]) return true; }
+          return false;
+        });
+        if(prodetcEvs.length===0) return;
+        var pci = CATS["prodetc"];
+        var psh=document.createElement("div");
+        psh.style.cssText="height:24px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:700;color:var(--color-text-secondary);";
+        psh.textContent="기타(상품)"; labelBody.appendChild(psh);
+        var psht=document.createElement("div");
+        psht.style.cssText="height:24px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);position:relative;";
+        if(todayDayIdx>=0&&todayDayIdx<totalDays){
+          var tlp=document.createElement("div"); tlp.style.cssText="position:absolute;left:"+(todayDayIdx*COL_W+COL_W/2)+"px;top:0;bottom:0;width:1px;background:rgba(26,26,24,0.15);";
+          psht.appendChild(tlp);
+        }
+        evBody.appendChild(psht);
+        prodetcEvs.forEach(function(ev){
+          var es=ev.date, ee=getEventDateEnd(ev)||ev.date;
+          var si=Math.max(0,dayIdx(es)), ei=Math.min(totalDays-1,dayIdx(ee));
+          if(si>totalDays-1||ei<0) return;
+          var txt=getCalDisplayText(ev)+"  "+fmtShort(es)+(ee!==es?"~"+fmtShort(ee):"");
+          var lr=document.createElement("div");
+          lr.style.cssText="height:"+ROW_H+"px;display:flex;align-items:center;padding:0 10px;font-size:12px;font-weight:700;border-bottom:1px solid var(--color-border);border-left:3px solid "+pci.color+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;background:var(--color-bg);";
+          lr.textContent=getCalDisplayText(ev); lr.title=txt;
+          lr.addEventListener("click",function(){ switchToCalendar(es); });
+          labelBody.appendChild(lr);
+          var tr=document.createElement("div");
+          tr.style.cssText="height:"+ROW_H+"px;position:relative;border-bottom:1px solid var(--color-border);";
+          if(todayDayIdx>=0&&todayDayIdx<totalDays){
+            var tl2=document.createElement("div"); tl2.style.cssText="position:absolute;left:"+(todayDayIdx*COL_W+COL_W/2)+"px;top:0;bottom:0;width:1px;background:rgba(26,26,24,0.1);z-index:0;";
+            tr.appendChild(tl2);
+          }
+          var bar=document.createElement("div");
+          bar.style.cssText="position:absolute;left:"+(si*COL_W)+"px;width:"+((ei-si+1)*COL_W-4)+"px;top:5px;bottom:5px;background:"+pci.bg+";border-left:3px solid "+pci.color+";border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:11px;font-weight:700;color:"+pci.text+";white-space:nowrap;overflow:visible;cursor:pointer;z-index:1;";
+          bar.textContent=txt;
+          bar.addEventListener("click",function(){ switchToCalendar(es); });
+          tr.appendChild(bar);
+          evBody.appendChild(tr);
+        });
+        return;
+      }
+
       var ci = CATS[catKey]||MEMBERS[catKey]; if(!ci) return;
       var catEvs = events.filter(function(e){
         if(e.category!==catKey) return false;
@@ -2092,6 +2161,8 @@ function renderGantt(){
         return false;
       });
       if(catEvs.length===0) return;
+
+      // 기타 섹션 (개별 행으로 표시) - 중복 제거됨
 
       if(catKey==="production"||catKey==="shoot"||catKey==="pattern"){
         if(catKey!=="production") return;
@@ -2263,7 +2334,14 @@ function renderGantt(){
         evBody.appendChild(tr);
       });
     });
-    labelBody.style.height = evBody.offsetHeight+"px";
+    labelBody.style.height = evBody.scrollHeight+"px";
+    // 각 라벨 행 높이를 evBody 행과 정확히 맞춤
+    var labelRows = labelBody.children;
+    var evRows = evBody.children;
+    for(var ri=0; ri<Math.min(labelRows.length, evRows.length); ri++){
+      var evH = evRows[ri].offsetHeight || parseInt(evRows[ri].style.height) || 0;
+      if(evH > 0) labelRows[ri].style.height = evH+"px";
+    }
   }
 
   function switchToCalendar(dateStr){
@@ -2289,6 +2367,8 @@ function renderGantt(){
       var vis = getVisibleMonths(tlWrap.scrollLeft, tlWrap.offsetWidth);
       buildRows(vis);
       labelBody.scrollTop = tlWrap.scrollTop;
+      // buildRows 후 높이 재동기화
+      labelBody.style.height = evBody.scrollHeight+"px";
     }, 200);
   });
 }
