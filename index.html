@@ -2093,67 +2093,149 @@ function renderGantt(){
       });
       if(catEvs.length===0) return;
 
-      var sh = document.createElement("div");
-      sh.style.cssText = "height:24px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:700;color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
-      sh.textContent = ci.label;
-      labelBody.appendChild(sh);
-      var sht = document.createElement("div");
-      sht.style.cssText = "height:24px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);position:relative;";
-      if(todayDayIdx>=0&&todayDayIdx<totalDays){
-        var tl=document.createElement("div"); tl.style.cssText="position:absolute;left:"+(todayDayIdx*COL_W+COL_W/2)+"px;top:0;bottom:0;width:1px;background:rgba(26,26,24,0.15);";
-        sht.appendChild(tl);
-      }
-      evBody.appendChild(sht);
-
       if(catKey==="production"||catKey==="shoot"||catKey==="pattern"){
-        var itemGroups={};
-        catEvs.forEach(function(ev){
-          var gk=(ev.company||"")+"||"+(ev.item||"");
-          if(!itemGroups[gk]) itemGroups[gk]={company:ev.company||"",item:ev.item||"",season:"",evs:[]};
-          itemGroups[gk].evs.push(ev);
-          if(ev.description&&/^[0-9]{2}(SS|FW)$/.test(String(ev.description))) itemGroups[gk].season=ev.description;
+        if(catKey!=="production") return;
+
+        // 섹션 헤더
+        var sh = document.createElement("div");
+        sh.style.cssText = "height:24px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:700;color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        sh.textContent = "상품 (메인 · 샘플 · 패턴)";
+        labelBody.appendChild(sh);
+        var sht = document.createElement("div");
+        sht.style.cssText = "height:24px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);position:relative;";
+        if(todayDayIdx>=0&&todayDayIdx<totalDays){
+          var tl=document.createElement("div"); tl.style.cssText="position:absolute;left:"+(todayDayIdx*COL_W+COL_W/2)+"px;top:0;bottom:0;width:1px;background:rgba(26,26,24,0.15);";
+          sht.appendChild(tl);
+        }
+        evBody.appendChild(sht);
+
+        var allProdEvs = events.filter(function(e){
+          if(e.category!=="production"&&e.category!=="shoot"&&e.category!=="pattern") return false;
+          if(RECUR.indexOf(e.item)!==-1) return false;
+          var es=e.date, ee=getEventDateEnd(e)||e.date;
+          var sm=parseInt(es.substring(0,4))*12+parseInt(es.substring(5,7))-1;
+          var em=parseInt(ee.substring(0,4))*12+parseInt(ee.substring(5,7))-1;
+          for(var vm=sm;vm<=em;vm++){ if(visMonths[vm]) return true; }
+          return false;
         });
-        Object.keys(itemGroups).forEach(function(gk){
-          var grp=itemGroups[gk];
-          var dates=grp.evs.map(function(e){ return e.date; }).sort();
-          var minDate=dates[0], maxDate=dates[dates.length-1];
-          var si=Math.max(0,dayIdx(minDate)), ei=Math.min(totalDays-1,dayIdx(maxDate));
-          if(si>totalDays-1||ei<0) return;
-          var seasonPfx=grp.season?"["+grp.season+"] ":"";
-          var labelTxt=seasonPfx+(grp.item||"")+(grp.company?" · "+grp.company:"");
+        if(allProdEvs.length===0) return;
+
+        // 아이템명으로 그룹핑 → 각 그룹 안에서 카테고리+차수별 바 목록 수집
+        var itemMap = {};
+        allProdEvs.forEach(function(ev){
+          var ik = (ev.item||"").trim().toLowerCase();
+          if(!itemMap[ik]) itemMap[ik] = { item: ev.item||"", season:"", bars:[] };
+          var s = parseProdSeason(ev.description||"")||"";
+          if(!itemMap[ik].season && s) itemMap[ik].season = s;
+
+          var ord = parseProdOrder(ev.description||"")||"";
+          var bk = ev.category+"|"+ord;
+          var existing = null;
+          itemMap[ik].bars.forEach(function(b){ if(b.key===bk) existing=b; });
+          if(!existing){
+            existing = { key:bk, category:ev.category, order:ord, company:ev.company||"", instrEv:null, expEv:null, compEv:null };
+            itemMap[ik].bars.push(existing);
+          }
+          if(ev.stage==="instruct") existing.instrEv=ev;
+          else if(ev.stage==="expected"||ev.stage==="expected_p") existing.expEv=ev;
+          else if(ev.stage==="completed"||ev.stage==="completed_p") existing.compEv=ev;
+          if(!existing.company && ev.company) existing.company=ev.company;
+        });
+
+        // 시즌→아이템명 정렬
+        var CAT_ORDER = {production:0, shoot:1, pattern:2};
+        var sortedItems = Object.keys(itemMap).sort(function(a,b){
+          var ga=itemMap[a], gb=itemMap[b];
+          var sa=ga.season||"ZZ", sb=gb.season||"ZZ";
+          if(sa!==sb) return sa<sb?-1:1;
+          return a<b?-1:1;
+        });
+
+        var BAR_H = 20, BAR_GAP = 3, ROW_PAD = 4;
+
+        sortedItems.forEach(function(ik){
+          var grp = itemMap[ik];
+          // 바 정렬: 카테고리→차수
+          grp.bars.sort(function(a,b){
+            var ca=CAT_ORDER[a.category]||0, cb=CAT_ORDER[b.category]||0;
+            if(ca!==cb) return ca-cb;
+            return (a.order||"")<(b.order||"")?-1:1;
+          });
+
+          var rowH = ROW_PAD*2 + grp.bars.length*(BAR_H+BAR_GAP) - BAR_GAP;
+          rowH = Math.max(rowH, ROW_H);
+
+          var seasonPfx = grp.season?"["+grp.season+"] ":"";
+          var labelTxt = seasonPfx+grp.item;
+
+          var allDates = [];
+          grp.bars.forEach(function(b){
+            if(b.instrEv) allDates.push(b.instrEv.date);
+            if(b.expEv) allDates.push(b.expEv.date);
+            if(b.compEv) allDates.push(b.compEv.date);
+          });
+          if(allDates.length===0) return;
+          allDates.sort();
+          var minDate = allDates[0];
 
           var lr=document.createElement("div");
-          lr.style.cssText="height:"+ROW_H+"px;display:flex;align-items:center;padding:0 10px;font-size:12px;border-bottom:1px solid var(--color-border);border-left:3px solid "+ci.color+";white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;background:var(--color-bg);";
-          lr.textContent=labelTxt; lr.title=labelTxt+" "+fmtShort(minDate)+"~"+fmtShort(maxDate);
+          lr.style.cssText="height:"+rowH+"px;display:flex;align-items:center;padding:0 10px;font-size:12px;font-weight:700;border-bottom:1px solid var(--color-border);border-left:3px solid var(--color-border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;background:var(--color-bg);";
+          lr.textContent=labelTxt; lr.title=labelTxt;
           lr.addEventListener("click",function(){ switchToCalendar(minDate); });
           labelBody.appendChild(lr);
 
           var tr=document.createElement("div");
-          tr.style.cssText="height:"+ROW_H+"px;position:relative;border-bottom:1px solid var(--color-border);";
+          tr.style.cssText="height:"+rowH+"px;position:relative;border-bottom:1px solid var(--color-border);";
           if(todayDayIdx>=0&&todayDayIdx<totalDays){
             var tl2=document.createElement("div"); tl2.style.cssText="position:absolute;left:"+(todayDayIdx*COL_W+COL_W/2)+"px;top:0;bottom:0;width:1px;background:rgba(26,26,24,0.1);z-index:0;";
             tr.appendChild(tl2);
           }
-          var barW=(ei-si+1)*COL_W-4;
-          var bar=document.createElement("div");
-          bar.style.cssText="position:absolute;left:"+(si*COL_W)+"px;width:"+barW+"px;top:6px;bottom:6px;background:"+ci.bg+";border-left:3px solid "+ci.color+";border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:11px;font-weight:700;color:"+ci.text+";white-space:nowrap;overflow:visible;cursor:pointer;z-index:1;";
-          bar.textContent=labelTxt+"  "+fmtShort(minDate)+"~"+fmtShort(maxDate);
-          bar.addEventListener("click",function(){ switchToCalendar(minDate); });
-          tr.appendChild(bar);
-          grp.evs.forEach(function(ev){
-            var di=dayIdx(ev.date);
-            if(di<0||di>=totalDays) return;
+
+          grp.bars.forEach(function(b, bi){
+            var cinfo = CATS[b.category];
+            var startEv = b.instrEv || b.expEv || b.compEv;
+            var endEv = b.compEv || b.expEv || b.instrEv;
+            if(!startEv) return;
+
+            var si=Math.max(0,dayIdx(startEv.date));
+            var ei=Math.min(totalDays-1,dayIdx(endEv.date));
+            if(si>totalDays-1||ei<0) return;
+
+            var rawOrd=b.order, dispOrd=rawOrd?(/^\d+$/.test(rawOrd)?rawOrd+"차":rawOrd):"";
+            var catLbl=b.category==="production"?"메인":b.category==="shoot"?"샘플":"패턴";
+            var barTxt=(dispOrd?dispOrd+" ":"")+catLbl+(b.company?" · "+b.company:"")+"  "+fmtShort(startEv.date)+"~"+fmtShort(endEv.date);
+
+            var topOffset = ROW_PAD + bi*(BAR_H+BAR_GAP);
+
+            var bar=document.createElement("div");
+            bar.style.cssText="position:absolute;left:"+(si*COL_W)+"px;top:"+topOffset+"px;height:"+BAR_H+"px;min-width:"+((ei-si+1)*COL_W-4)+"px;background:"+cinfo.bg+";border-left:3px solid "+cinfo.color+";border-radius:4px;display:flex;align-items:center;padding:0 7px;font-size:11px;font-weight:700;color:"+cinfo.text+";white-space:nowrap;overflow:visible;cursor:pointer;z-index:1;";
+            bar.textContent=barTxt; bar.title=barTxt;
+            bar.addEventListener("click",function(){ switchToCalendar(startEv.date); });
+            tr.appendChild(bar);
+
+            // 끝점 dot
             var dot=document.createElement("div");
-            var stLab=stageLabel(ev.stage,catKey);
-            dot.style.cssText="position:absolute;left:"+(di*COL_W+COL_W/2-5)+"px;top:50%;transform:translateY(-50%);width:10px;height:10px;border-radius:50%;background:"+ci.color+";border:2px solid #fff;z-index:3;cursor:pointer;";
-            dot.title=stLab+" ("+ev.date+")";
-            dot.addEventListener("click",function(e){ e.stopPropagation(); switchToCalendar(ev.date); });
+            dot.style.cssText="position:absolute;left:"+((ei+1)*COL_W-8)+"px;top:"+(topOffset+BAR_H/2-4)+"px;width:8px;height:8px;border-radius:50%;background:"+cinfo.color+";border:2px solid #fff;z-index:3;pointer-events:none;";
             tr.appendChild(dot);
           });
+
           evBody.appendChild(tr);
         });
         return;
       }
+
+      // 나머지 카테고리 섹션 헤더
+      var sh2 = document.createElement("div");
+      sh2.style.cssText = "height:24px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:700;color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      sh2.textContent = ci.label;
+      labelBody.appendChild(sh2);
+      var sht2 = document.createElement("div");
+      sht2.style.cssText = "height:24px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);position:relative;";
+      if(todayDayIdx>=0&&todayDayIdx<totalDays){
+        var tlh=document.createElement("div"); tlh.style.cssText="position:absolute;left:"+(todayDayIdx*COL_W+COL_W/2)+"px;top:0;bottom:0;width:1px;background:rgba(26,26,24,0.15);";
+        sht2.appendChild(tlh);
+      }
+      evBody.appendChild(sht2);
 
       catEvs.forEach(function(ev){
         var es=ev.date, ee=getEventDateEnd(ev)||ev.date;
