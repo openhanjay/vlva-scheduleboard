@@ -326,6 +326,7 @@
           <button id="next-btn">&#9656;</button>
           <button id="refresh-btn">새로고침</button>
           <button id="view-toggle-btn" style="border-color:var(--color-info);color:var(--color-info);">간트뷰</button>
+          <button id="season-settings-btn" title="시즌 기간 설정" style="font-size:16px;padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);cursor:pointer;">⚙️</button>
         </div>
       </div>
     </div>
@@ -1971,6 +1972,7 @@ function setWeekdayRow(isGantt){
   }
 }
 
+document.getElementById("season-settings-btn").addEventListener("click", function(){ openSeasonSettingsModal(); });
 document.getElementById("view-toggle-btn").addEventListener("click", function(){
   currentView = (currentView === "calendar") ? "gantt" : "calendar";
   var btn = document.getElementById("view-toggle-btn");
@@ -2079,24 +2081,93 @@ function renderGantt(){
   function buildRows(visMonths){
     labelBody.innerHTML = "";
     evBody.innerHTML = "";
+    tlWrap.__seasonUpdaters = [];
     var groupOrder = Object.keys(CATS).concat(Object.keys(MEMBERS));
     // 시즌은 맨 위, 상품/기타는 맨 아래
     groupOrder = groupOrder.filter(function(k){ return k!=="production"&&k!=="shoot"&&k!=="pattern"&&k!=="prodetc"; });
     groupOrder.unshift("__season__"); // 시즌 맨 위
     groupOrder.push("production","shoot","pattern","__prodetc__"); // 상품+기타 맨 아래
     groupOrder.forEach(function(catKey){
-      // 시즌 섹션 헤더 (빈 섹션)
+      // 시즌 섹션
       if(catKey === "__season__"){
+        var validSeasons = seasonSettings.filter(function(s){ return s.start && s.end; });
+
+        // 레인 배정: 겹치는 시즌을 다른 레인으로
+        var lanes = [];
+        var laneAssign = [];
+        validSeasons.forEach(function(s){
+          var si = dayIdx(s.start), ei = dayIdx(s.end);
+          var assigned = -1;
+          for(var li=0; li<lanes.length; li++){
+            var conflict = false;
+            for(var ki=0; ki<lanes[li].length; ki++){
+              var o = lanes[li][ki];
+              if(si <= o.ei && ei >= o.si){ conflict=true; break; }
+            }
+            if(!conflict){ assigned=li; break; }
+          }
+          if(assigned===-1){ assigned=lanes.length; lanes.push([]); }
+          lanes[assigned].push({si:si, ei:ei, s:s});
+          laneAssign.push(assigned);
+        });
+
+        var laneCount = Math.max(1, lanes.length);
+        var LANE_H = ROW_H;
+        var totalH = laneCount * LANE_H;
+
+        // 라벨 — 섹션 헤더 하나 (가변 높이)
         var seasonSh = document.createElement("div");
-        seasonSh.style.cssText = "height:24px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:700;color:var(--color-text-secondary);";
+        seasonSh.style.cssText = "height:"+totalH+"px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:700;color:var(--color-text-secondary);";
         seasonSh.textContent = "시즌";
         labelBody.appendChild(seasonSh);
+
+        // 타임라인 — 같은 높이의 컨테이너 하나
         var seasonSht = document.createElement("div");
-        seasonSht.style.cssText = "height:24px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);position:relative;";
+        seasonSht.style.cssText = "height:"+totalH+"px;background:var(--color-bg-secondary);border-bottom:1px solid var(--color-border);position:relative;";
         if(todayDayIdx>=0&&todayDayIdx<totalDays){
-          var tlSeason=document.createElement("div"); tlSeason.style.cssText="position:absolute;left:"+(todayDayIdx*COL_W+COL_W/2)+"px;top:0;bottom:0;width:1px;background:rgba(26,26,24,0.15);";
+          var tlSeason=document.createElement("div");
+          tlSeason.style.cssText="position:absolute;left:"+(todayDayIdx*COL_W+COL_W/2)+"px;top:0;bottom:0;width:1px;background:rgba(26,26,24,0.2);z-index:0;";
           seasonSht.appendChild(tlSeason);
         }
+
+        validSeasons.forEach(function(s, idx){
+          var si2 = Math.max(0, dayIdx(s.start));
+          var ei2 = Math.min(totalDays-1, dayIdx(s.end));
+          if(si2 > totalDays-1 || ei2 < 0) return;
+
+          var lane = laneAssign[idx];
+          var topOffset = lane * LANE_H + Math.round((LANE_H-22)/2);
+          var barStartX = si2 * COL_W;
+          var barEndX = (ei2+1) * COL_W;
+
+          var bar = document.createElement("div");
+          bar.style.cssText = "position:absolute;left:"+barStartX+"px;width:"+(barEndX-barStartX-2)+"px;top:"+topOffset+"px;height:22px;background:"+s.bg+";border-left:3px solid "+s.color+";border-radius:4px;overflow:hidden;cursor:pointer;z-index:1;";
+
+          // 텍스트는 별도 span으로, 뷰포트 중앙에 sticky하게
+          var txt = document.createElement("span");
+          txt.textContent = s.label+"  "+fmtShort(s.start)+"~"+fmtShort(s.end);
+          txt.style.cssText = "position:absolute;top:50%;transform:translateY(-50%);font-size:11px;font-weight:700;color:"+s.color+";white-space:nowrap;pointer-events:none;";
+          bar.appendChild(txt);
+          bar.addEventListener("click", function(){ openSeasonSettingsModal(); });
+          seasonSht.appendChild(bar);
+
+          // 텍스트 위치를 뷰포트 기준 중앙으로 업데이트하는 함수
+          function updateTxtPos(){
+            var scrollLeft = tlWrap.scrollLeft;
+            var viewW = tlWrap.offsetWidth;
+            var visLeft = Math.max(barStartX, scrollLeft);
+            var visRight = Math.min(barEndX, scrollLeft + viewW);
+            if(visLeft >= visRight){ txt.style.left="0px"; return; }
+            var visCenter = (visLeft + visRight) / 2;
+            var txtLeft = visCenter - barStartX - txt.offsetWidth/2;
+            // 바 안에서 벗어나지 않도록 클램프
+            txtLeft = Math.max(6, Math.min(txtLeft, barEndX - barStartX - txt.offsetWidth - 6));
+            txt.style.left = txtLeft + "px";
+          }
+          tlWrap.__seasonUpdaters = tlWrap.__seasonUpdaters || [];
+          tlWrap.__seasonUpdaters.push(updateTxtPos);
+        });
+
         evBody.appendChild(seasonSht);
         return;
       }
@@ -2335,13 +2406,12 @@ function renderGantt(){
       });
     });
     labelBody.style.height = evBody.scrollHeight+"px";
-    // 각 라벨 행 높이를 evBody 행과 정확히 맞춤
-    var labelRows = labelBody.children;
-    var evRows = evBody.children;
-    for(var ri=0; ri<Math.min(labelRows.length, evRows.length); ri++){
-      var evH = evRows[ri].offsetHeight || parseInt(evRows[ri].style.height) || 0;
-      if(evH > 0) labelRows[ri].style.height = evH+"px";
-    }
+    // DOM 렌더링 후 시즌 텍스트 위치 정확하게 초기화
+    requestAnimationFrame(function(){
+      if(tlWrap.__seasonUpdaters){
+        tlWrap.__seasonUpdaters.forEach(function(fn){ fn(); });
+      }
+    });
   }
 
   function switchToCalendar(dateStr){
@@ -2362,12 +2432,15 @@ function renderGantt(){
   var stimer=null;
   tlWrap.addEventListener("scroll", function(){
     labelBody.scrollTop = tlWrap.scrollTop;
+    // 시즌 텍스트 위치 즉시 업데이트
+    if(tlWrap.__seasonUpdaters){
+      tlWrap.__seasonUpdaters.forEach(function(fn){ fn(); });
+    }
     if(stimer) clearTimeout(stimer);
     stimer = setTimeout(function(){
       var vis = getVisibleMonths(tlWrap.scrollLeft, tlWrap.offsetWidth);
       buildRows(vis);
       labelBody.scrollTop = tlWrap.scrollTop;
-      // buildRows 후 높이 재동기화
       labelBody.style.height = evBody.scrollHeight+"px";
     }, 200);
   });
@@ -2433,7 +2506,26 @@ var PROD_ITEMS_CACHE_KEY = "vlvd_prod_items_cache";
 var PROD_LINKS_CACHE_KEY = "vlvd_prod_links_cache";
 var prodItems = [];
 var costDataMap = {};
-var prodLinks = {}; // itemId -> { pattern:[eventId,...], shoot:[...], main:[...] }
+var prodLinks = {};
+
+// 시즌 설정
+var SEASON_SETTINGS_KEY = "vlvd_season_settings";
+var seasonSettings = [
+  { id:"26SS", label:"26SS", color:"#E91E63", bg:"#FCE4EC", start:"2025-09-01", end:"2026-02-28" },
+  { id:"26FW", label:"26FW", color:"#FF6F00", bg:"#FFF3E0", start:"2026-03-01", end:"2026-08-31" },
+  { id:"27SS", label:"27SS", color:"#1565C0", bg:"#E3F2FD", start:"2026-09-01", end:"2027-02-28" },
+  { id:"27FW", label:"27FW", color:"#2E7D32", bg:"#E8F5E9", start:"2027-03-01", end:"2027-08-31" }
+];
+function loadSeasonSettings(){
+  try {
+    var s = localStorage.getItem(SEASON_SETTINGS_KEY);
+    if(s) seasonSettings = JSON.parse(s);
+  } catch(e){}
+}
+function saveSeasonSettings(){
+  try { localStorage.setItem(SEASON_SETTINGS_KEY, JSON.stringify(seasonSettings)); } catch(e){}
+}
+loadSeasonSettings();
 
 function loadProdLinksLocal(){
   try {
@@ -3065,6 +3157,86 @@ function openOrderQtyModal(ev){
 }
 
 /* ---- 메모 팝업 ---- */
+/* ---- 시즌 설정 모달 ---- */
+function openSeasonSettingsModal(){
+  var modalRoot = document.getElementById("modal-root");
+  modalRoot.innerHTML = "";
+  var overlay = document.createElement("div"); overlay.className = "modal-overlay";
+  var modal = document.createElement("div"); modal.className = "cost-modal"; modal.style.maxWidth = "520px";
+  overlay.appendChild(modal);
+  overlay.addEventListener("click", function(e){ if(e.target===overlay) modalRoot.innerHTML=""; });
+
+  function buildModal(){
+    modal.innerHTML = "";
+    var h2 = document.createElement("h2"); h2.textContent = "⚙️ 시즌 기간 설정"; modal.appendChild(h2);
+
+    seasonSettings.forEach(function(s, idx){
+      var row = document.createElement("div");
+      row.style.cssText = "display:grid;grid-template-columns:80px 1fr 1fr 32px;gap:8px;align-items:center;margin-bottom:10px;";
+
+      // 라벨
+      var labelInp = document.createElement("input"); labelInp.type="text"; labelInp.value=s.label;
+      labelInp.style.cssText="padding:7px 8px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:"+s.bg+";color:"+s.color+";font-weight:700;text-align:center;";
+      labelInp.addEventListener("change", function(){ s.label=labelInp.value.trim(); });
+      row.appendChild(labelInp);
+
+      // 시작일
+      var startInp = document.createElement("input"); startInp.type="date"; startInp.value=s.start;
+      startInp.style.cssText="padding:7px 8px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);width:100%;";
+      startInp.addEventListener("change", function(){ s.start=startInp.value; });
+      row.appendChild(startInp);
+
+      // 종료일
+      var endInp = document.createElement("input"); endInp.type="date"; endInp.value=s.end;
+      endInp.style.cssText="padding:7px 8px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);width:100%;";
+      endInp.addEventListener("change", function(){ s.end=endInp.value; });
+      row.appendChild(endInp);
+
+      // 삭제
+      var delBtn = document.createElement("button"); delBtn.textContent="✕";
+      delBtn.style.cssText="padding:4px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);cursor:pointer;font-size:13px;color:var(--color-text-secondary);";
+      (function(i){ delBtn.addEventListener("click", function(){
+        if(!confirm("\""+s.label+"\" 시즌을 삭제할까요?")) return;
+        seasonSettings.splice(i,1);
+        saveSeasonSettings();
+        buildModal();
+      }); })(idx);
+      row.appendChild(delBtn);
+
+      modal.appendChild(row);
+    });
+
+    // + 시즌 추가
+    var addBtn = document.createElement("button"); addBtn.textContent = "+ 시즌 추가";
+    addBtn.style.cssText="width:100%;padding:8px;border:1px dashed var(--color-border);border-radius:var(--radius-md);background:var(--color-bg-secondary);cursor:pointer;font-size:13px;color:var(--color-text-secondary);margin-top:4px;";
+    addBtn.addEventListener("click", function(){
+      var colors = ["#E91E63","#FF6F00","#1565C0","#2E7D32","#6A1B9A","#00838F"];
+      var bgs = ["#FCE4EC","#FFF3E0","#E3F2FD","#E8F5E9","#F3E5F5","#E0F7FA"];
+      var ci = seasonSettings.length % colors.length;
+      seasonSettings.push({ id:"new_"+Date.now(), label:"새시즌", color:colors[ci], bg:bgs[ci], start:"", end:"" });
+      buildModal();
+    });
+    modal.appendChild(addBtn);
+
+    var btnRow = document.createElement("div"); btnRow.className="cost-modal-btnrow"; btnRow.style.marginTop="16px";
+    var cancelBtn = document.createElement("button"); cancelBtn.textContent="취소";
+    cancelBtn.addEventListener("click", function(){ modalRoot.innerHTML=""; });
+    btnRow.appendChild(cancelBtn);
+    var saveBtn = document.createElement("button"); saveBtn.className="primary"; saveBtn.textContent="저장";
+    saveBtn.addEventListener("click", function(){
+      saveSeasonSettings();
+      modalRoot.innerHTML="";
+      showToast("시즌 설정이 저장되었습니다.");
+      if(currentView==="gantt") renderGantt();
+    });
+    btnRow.appendChild(saveBtn);
+    modal.appendChild(btnRow);
+  }
+
+  buildModal();
+  modalRoot.appendChild(overlay);
+}
+
 function openMemoModal(item){
   // item.memo를 배열로 관리 (기존 문자열이면 마이그레이션)
   if(!item.memoLog) item.memoLog = [];
