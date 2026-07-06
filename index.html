@@ -2531,6 +2531,8 @@ function loadSeasonSettingsFromServer(){
     if(data && Array.isArray(data.settings) && data.settings.length > 0){
       seasonSettings = data.settings;
       try { localStorage.setItem(SEASON_SETTINGS_KEY, JSON.stringify(seasonSettings)); } catch(e){}
+      // 간트뷰가 열려있으면 재렌더링
+      if(typeof currentView !== "undefined" && currentView === "gantt") renderGantt();
     }
   }).catch(function(){});
 }
