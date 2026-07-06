@@ -2146,7 +2146,7 @@ function renderGantt(){
           // 텍스트는 별도 span으로, 뷰포트 중앙에 sticky하게
           var txt = document.createElement("span");
           txt.textContent = s.label+"  "+fmtShort(s.start)+"~"+fmtShort(s.end);
-          txt.style.cssText = "position:absolute;top:50%;transform:translateY(-50%);font-size:11px;font-weight:700;color:"+s.color+";white-space:nowrap;pointer-events:none;";
+          txt.style.cssText = "position:absolute;top:50%;transform:translateY(-50%);font-size:13px;font-weight:700;color:"+s.color+";white-space:nowrap;pointer-events:none;";
           bar.appendChild(txt);
           bar.addEventListener("click", function(){ openSeasonSettingsModal(); });
           seasonSht.appendChild(bar);
