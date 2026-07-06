@@ -3162,7 +3162,7 @@ function openSeasonSettingsModal(){
   var modalRoot = document.getElementById("modal-root");
   modalRoot.innerHTML = "";
   var overlay = document.createElement("div"); overlay.className = "modal-overlay";
-  var modal = document.createElement("div"); modal.className = "cost-modal"; modal.style.maxWidth = "520px";
+  var modal = document.createElement("div"); modal.className = "cost-modal"; modal.style.maxWidth = "680px";
   overlay.appendChild(modal);
   overlay.addEventListener("click", function(e){ if(e.target===overlay) modalRoot.innerHTML=""; });
 
@@ -3172,24 +3172,24 @@ function openSeasonSettingsModal(){
 
     seasonSettings.forEach(function(s, idx){
       var row = document.createElement("div");
-      row.style.cssText = "display:grid;grid-template-columns:80px 1fr 1fr 32px;gap:8px;align-items:center;margin-bottom:10px;";
+      row.style.cssText = "display:grid;grid-template-columns:1fr 130px 130px 36px;gap:10px;align-items:center;margin-bottom:12px;";
 
       // 라벨
       var labelInp = document.createElement("input"); labelInp.type="text"; labelInp.value=s.label;
-      labelInp.style.cssText="padding:7px 8px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:"+s.bg+";color:"+s.color+";font-weight:700;text-align:center;";
-      labelInp.addEventListener("change", function(){ s.label=labelInp.value.trim(); });
+      labelInp.style.cssText="padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:14px;font-family:inherit;background:"+s.bg+";color:"+s.color+";font-weight:700;text-align:center;width:100%;";
+      labelInp.addEventListener("input", function(){ s.label=labelInp.value; });
       row.appendChild(labelInp);
 
       // 시작일
       var startInp = document.createElement("input"); startInp.type="date"; startInp.value=s.start;
       startInp.style.cssText="padding:7px 8px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);width:100%;";
-      startInp.addEventListener("change", function(){ s.start=startInp.value; });
+      startInp.addEventListener("input", function(){ s.start=startInp.value; });
       row.appendChild(startInp);
 
       // 종료일
       var endInp = document.createElement("input"); endInp.type="date"; endInp.value=s.end;
       endInp.style.cssText="padding:7px 8px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;font-family:inherit;background:var(--color-bg);color:var(--color-text);width:100%;";
-      endInp.addEventListener("change", function(){ s.end=endInp.value; });
+      endInp.addEventListener("input", function(){ s.end=endInp.value; });
       row.appendChild(endInp);
 
       // 삭제
