@@ -2524,8 +2524,18 @@ function loadSeasonSettings(){
 }
 function saveSeasonSettings(){
   try { localStorage.setItem(SEASON_SETTINGS_KEY, JSON.stringify(seasonSettings)); } catch(e){}
+  apiPost({action:"saveSeasonSettings", data:seasonSettings}).catch(function(){});
+}
+function loadSeasonSettingsFromServer(){
+  return apiGet("seasonSettings").then(function(data){
+    if(data && Array.isArray(data.settings) && data.settings.length > 0){
+      seasonSettings = data.settings;
+      try { localStorage.setItem(SEASON_SETTINGS_KEY, JSON.stringify(seasonSettings)); } catch(e){}
+    }
+  }).catch(function(){});
 }
 loadSeasonSettings();
+loadSeasonSettingsFromServer();
 
 function loadProdLinksLocal(){
   try {
