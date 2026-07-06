@@ -2146,7 +2146,7 @@ function renderGantt(){
           // 텍스트는 별도 span으로, 뷰포트 중앙에 sticky하게
           var txt = document.createElement("span");
           txt.textContent = s.label+"  "+fmtShort(s.start)+"~"+fmtShort(s.end);
-          txt.style.cssText = "position:absolute;top:50%;transform:translateY(-50%);font-size:13px;font-weight:700;color:"+s.color+";white-space:nowrap;pointer-events:none;";
+          txt.style.cssText = "position:absolute;top:50%;transform:translateY(-50%);font-size:15px;font-weight:700;color:"+s.color+";white-space:nowrap;pointer-events:none;";
           bar.appendChild(txt);
           bar.addEventListener("click", function(){ openSeasonSettingsModal(); });
           seasonSht.appendChild(bar);
@@ -2511,10 +2511,10 @@ var prodLinks = {};
 // 시즌 설정
 var SEASON_SETTINGS_KEY = "vlvd_season_settings";
 var seasonSettings = [
-  { id:"26SS", label:"26SS", color:"#E91E63", bg:"#FCE4EC", start:"2025-09-01", end:"2026-02-28" },
-  { id:"26FW", label:"26FW", color:"#FF6F00", bg:"#FFF3E0", start:"2026-03-01", end:"2026-08-31" },
-  { id:"27SS", label:"27SS", color:"#1565C0", bg:"#E3F2FD", start:"2026-09-01", end:"2027-02-28" },
-  { id:"27FW", label:"27FW", color:"#2E7D32", bg:"#E8F5E9", start:"2027-03-01", end:"2027-08-31" }
+  { id:"26SS", label:"26SS", color:"#AD1457", bg:"#F06292", start:"2025-09-01", end:"2026-02-28" },
+  { id:"26FW", label:"26FW", color:"#BF360C", bg:"#FF8A65", start:"2026-03-01", end:"2026-08-31" },
+  { id:"27SS", label:"27SS", color:"#0A2E6E", bg:"#64B5F6", start:"2026-09-01", end:"2027-02-28" },
+  { id:"27FW", label:"27FW", color:"#1B5E20", bg:"#81C784", start:"2027-03-01", end:"2027-08-31" }
 ];
 function loadSeasonSettings(){
   try {
