@@ -230,7 +230,10 @@
   table.prod-table th:nth-child(6) { width:18%; }  /* 메인 */
   table.prod-table th:nth-child(7) { width:12%; }  /* 원가계산 */
   table.prod-table th:nth-child(8) { width:8%; }   /* 삭제 */
-  .prod-memo-btn { font-size:18px; background:none; border:none; cursor:pointer; padding:4px; color:var(--color-text-tertiary); line-height:1; }
+  .prod-drag-handle { cursor:grab; color:var(--color-text-tertiary); font-size:14px; padding:0 4px; user-select:none; flex-shrink:0; }
+  .prod-drag-handle:active { cursor:grabbing; }
+  tr.prod-dragging { opacity:0.4; }
+  tr.prod-drag-over { border-top:2px solid var(--color-info); }
   .prod-memo-btn:hover { color:var(--color-text); background:none; }
   .prod-memo-btn.has-memo { color:#F4A836; }
   table.prod-table tr:last-child td { border-bottom:none; }
@@ -3013,11 +3016,55 @@ function renderProductionTable(){
   }
   prodItems.forEach(function(item){
     var tr = document.createElement("tr");
+    tr.draggable = true;
+    tr.dataset.itemId = item.id;
     var status = getProdStatusForItem(item.name);
 
     var tdName = document.createElement("td"); tdName.className = "prod-item-name";
-    tdName.innerHTML = item.name + (item.season ? '<span class="prod-season-tag">'+item.season+'</span>' : "");
+    tdName.style.cssText = "vertical-align:middle;";
+
+    // 드래그 핸들
+    var handle = document.createElement("span"); handle.className = "prod-drag-handle"; handle.textContent = "⠿";
+    handle.title = "드래그해서 순서 변경";
+    handle.style.cssText = "cursor:grab;color:var(--color-text-tertiary);font-size:14px;padding:0 4px;user-select:none;vertical-align:middle;";
+    tdName.appendChild(handle);
+
+    var nameSpan = document.createElement("span");
+    nameSpan.style.cssText = "vertical-align:middle;";
+    nameSpan.innerHTML = item.name + (item.season ? '<span class="prod-season-tag">'+item.season+'</span>' : "");
+    tdName.appendChild(nameSpan);
     tr.appendChild(tdName);
+
+    // 드래그앤드롭 이벤트
+    (function(dragItem){
+      tr.addEventListener("dragstart", function(e){
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", dragItem.id);
+        tr.classList.add("prod-dragging");
+      });
+      tr.addEventListener("dragend", function(){
+        tr.classList.remove("prod-dragging");
+        document.querySelectorAll("tr.prod-drag-over").forEach(function(el){ el.classList.remove("prod-drag-over"); });
+      });
+      tr.addEventListener("dragover", function(e){
+        e.preventDefault(); e.dataTransfer.dropEffect = "move";
+        document.querySelectorAll("tr.prod-drag-over").forEach(function(el){ el.classList.remove("prod-drag-over"); });
+        tr.classList.add("prod-drag-over");
+      });
+      tr.addEventListener("drop", function(e){
+        e.preventDefault();
+        tr.classList.remove("prod-drag-over");
+        var fromId = e.dataTransfer.getData("text/plain");
+        if(fromId === dragItem.id) return;
+        var fromIdx = prodItems.findIndex(function(p){ return p.id === fromId; });
+        var toIdx = prodItems.findIndex(function(p){ return p.id === dragItem.id; });
+        if(fromIdx === -1 || toIdx === -1) return;
+        var moved = prodItems.splice(fromIdx, 1)[0];
+        prodItems.splice(toIdx, 0, moved);
+        saveProdItemsLocal();
+        renderProductionTable();
+      });
+    })(item);
 
     // 메모 셀
     var tdMemo = document.createElement("td"); tdMemo.style.cssText="text-align:left;padding-left:6px;";
