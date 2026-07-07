@@ -1824,7 +1824,31 @@ function localAddEvent(evObj){
 }
 function localUpdateEvent(evObj){
   for(var i=0;i<events.length;i++){
-    if(String(events[i].id)===String(evObj.id)){ events[i]=evObj; break; }
+    if(String(events[i].id)===String(evObj.id)){
+      var oldItem = (events[i].item||"").trim();
+      var newItem = (evObj.item||"").trim();
+      // 아이템명이 변경된 경우 생산관리에서도 업데이트
+      if(oldItem && newItem && oldItem.toLowerCase() !== newItem.toLowerCase()){
+        var updated = false;
+        prodItems.forEach(function(p){
+          if((p.name||"").trim().toLowerCase() === oldItem.toLowerCase()){
+            p.name = newItem;
+            updated = true;
+          }
+        });
+        // 블랙리스트도 업데이트
+        if(prodDeletedNames[oldItem.toLowerCase()]){
+          delete prodDeletedNames[oldItem.toLowerCase()];
+          prodDeletedNames[newItem.toLowerCase()] = true;
+          saveProdDeletedNames();
+        }
+        if(updated){
+          saveProdItemsLocal();
+          apiPost({action:"createProdItem", data:prodItems.find(function(p){ return (p.name||"").toLowerCase()===newItem.toLowerCase(); })}).catch(function(){});
+        }
+      }
+      events[i]=evObj; break;
+    }
   }
   try { localStorage.setItem(EVENTS_CACHE_KEY, JSON.stringify({ts:Date.now(),data:events})); } catch(e){}
 }
@@ -3030,8 +3054,39 @@ function renderProductionTable(){
     tdName.appendChild(handle);
 
     var nameSpan = document.createElement("span");
-    nameSpan.style.cssText = "vertical-align:middle;";
+    nameSpan.style.cssText = "vertical-align:middle;cursor:pointer;border-bottom:1px dashed transparent;";
+    nameSpan.title = "클릭해서 이름 수정";
     nameSpan.innerHTML = item.name + (item.season ? '<span class="prod-season-tag">'+item.season+'</span>' : "");
+    nameSpan.addEventListener("click", function(){
+      var inp = document.createElement("input");
+      inp.type = "text"; inp.value = item.name;
+      inp.style.cssText = "font-size:14px;padding:2px 6px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-family:inherit;background:var(--color-bg);color:var(--color-text);width:120px;";
+      nameSpan.replaceWith(inp);
+      inp.focus(); inp.select();
+      function save(){
+        var newName = inp.value.trim();
+        if(!newName){ renderProductionTable(); return; }
+        if(newName.toLowerCase() !== item.name.toLowerCase()){
+          // 블랙리스트 업데이트
+          if(prodDeletedNames[item.name.toLowerCase()]){
+            delete prodDeletedNames[item.name.toLowerCase()];
+            prodDeletedNames[newName.toLowerCase()] = true;
+            saveProdDeletedNames();
+          }
+          item.name = newName;
+          saveProdItemsLocal();
+          apiPost({action:"createProdItem", data:item}).catch(function(){});
+        }
+        renderProductionTable();
+      }
+      inp.addEventListener("blur", save);
+      inp.addEventListener("keydown", function(e){
+        if(e.key==="Enter") save();
+        if(e.key==="Escape") renderProductionTable();
+      });
+    });
+    nameSpan.addEventListener("mouseenter", function(){ nameSpan.style.borderBottomColor="var(--color-border)"; });
+    nameSpan.addEventListener("mouseleave", function(){ nameSpan.style.borderBottomColor="transparent"; });
     tdName.appendChild(nameSpan);
     tr.appendChild(tdName);
 
