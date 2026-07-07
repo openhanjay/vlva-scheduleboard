@@ -1602,6 +1602,18 @@ function renderPanelForm(dateStr, ev){
         }
       });
     }
+    var VI_STYLE = "font-size:14px;padding:6px 4px;width:100%;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text);font-family:inherit;";
+    function addTabNav(inp){
+      inp.addEventListener("keydown", function(e){
+        if(e.key !== "Tab" || e.shiftKey) return;
+        var allInputs = Array.prototype.slice.call(variantListEl.querySelectorAll("input,select"));
+        var ci = allInputs.indexOf(inp);
+        if(ci !== -1 && ci + 1 < allInputs.length){
+          e.preventDefault();
+          allInputs[ci+1].focus();
+        }
+      });
+    }
     variants.forEach(function(v,idx){
       var row=document.createElement("div"); row.className="variant-row";
       var sq=(sv!=="instruct"); row.style.gridTemplateColumns=sq?"1fr 1fr 0.8fr 0.8fr 26px":"1fr 1fr 0.9fr 26px";
@@ -1615,9 +1627,9 @@ function renderPanelForm(dateStr, ev){
         sk.forEach(function(k,ci){
           if(k==="size"){
             var ss=document.createElement("input"); ss.type="text"; ss.placeholder="사이즈"; ss.style.cssText="font-size:14px;padding:6px 4px;width:100%;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text);font-family:inherit;";
-            ss.value=v[k]||""; ss.addEventListener("input",function(){ v[k]=ss.value; }); row.appendChild(ss);
+            ss.value=v[k]||""; ss.addEventListener("input",function(){ v[k]=ss.value; }); addTabNav(ss); row.appendChild(ss);
           } else {
-            var inp=document.createElement("input"); inp.type="text"; inp.placeholder=sp[ci]; inp.value=v[k]||""; inp.addEventListener("input",function(){ v[k]=inp.value; }); row.appendChild(inp);
+            var inp=document.createElement("input"); inp.type="text"; inp.placeholder=sp[ci]; inp.value=v[k]||""; inp.style.cssText=VI_STYLE; inp.addEventListener("input",function(){ v[k]=inp.value; }); addTabNav(inp); row.appendChild(inp);
           }
         });
       } else {
@@ -1625,24 +1637,30 @@ function renderPanelForm(dateStr, ev){
         ck.forEach(function(k,ci){
           if(k==="size"){
             var ss=document.createElement("input"); ss.type="text"; ss.placeholder="사이즈"; ss.style.cssText="font-size:14px;padding:6px 4px;width:100%;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-text);font-family:inherit;";
-            ss.value=v[k]||""; ss.addEventListener("input",function(){ v[k]=ss.value; }); row.appendChild(ss);
+            ss.value=v[k]||""; ss.addEventListener("input",function(){ v[k]=ss.value; }); addTabNav(ss); row.appendChild(ss);
           } else {
-            var inp=document.createElement("input"); inp.type="text"; inp.placeholder=cp[ci]; inp.value=v[k]||""; inp.addEventListener("input",function(){ v[k]=inp.value; });
+            var inp=document.createElement("input"); inp.type="text"; inp.placeholder=cp[ci]; inp.value=v[k]||""; inp.style.cssText=VI_STYLE; inp.addEventListener("input",function(){ v[k]=inp.value; });
             if(k==="color"){
+              inp.setAttribute("data-variant-idx", idx);
               inp.addEventListener("blur",function(){ renderVariantRows(); });
               inp.addEventListener("keydown",function(e){
                 if(e.key==="Tab"&&!e.shiftKey){
                   e.preventDefault();
                   v[k]=inp.value;
+                  var targetIdx = idx;
                   renderVariantRows();
                   setTimeout(function(){
-                    var allInputs=variantListEl.querySelectorAll("input,select");
-                    var rowInputs=Array.prototype.slice.call(allInputs);
-                    var myRowStart=rowInputs.indexOf(inp);
-                    if(myRowStart!==-1&&myRowStart+1<rowInputs.length) rowInputs[myRowStart+1].focus();
+                    // data-variant-idx가 같은 행의 두 번째 input(사이즈) 찾기
+                    var rows = variantListEl.querySelectorAll(".variant-row");
+                    if(rows[targetIdx]){
+                      var inputs = rows[targetIdx].querySelectorAll("input,select");
+                      if(inputs[1]) inputs[1].focus();
+                    }
                   },10);
                 }
               });
+            } else {
+              addTabNav(inp);
             }
             row.appendChild(inp);
           }
