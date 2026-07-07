@@ -2175,6 +2175,32 @@ function renderGantt(){
           tlWrap.__seasonUpdaters.push(updateTxtPos);
         });
 
+        // 빈 영역 클릭 → 해당 날짜로 새 시즌 추가
+        seasonSht.addEventListener("click", function(e){
+          if(e.target !== seasonSht) return; // 바 클릭은 제외
+          var rect = seasonSht.getBoundingClientRect();
+          var clickX = e.clientX - rect.left + (tlWrap.scrollLeft - (seasonSht.getBoundingClientRect().left - tlWrap.getBoundingClientRect().left + tlWrap.scrollLeft));
+          var clickedDayIdx = Math.floor(e.offsetX / COL_W);
+          var clickedDate = new Date(YEAR, 0, 1 + clickedDayIdx);
+          var yyyy = clickedDate.getFullYear();
+          var mm = String(clickedDate.getMonth()+1).padStart(2,"0");
+          var dd = String(clickedDate.getDate()).padStart(2,"0");
+          var startStr = yyyy+"-"+mm+"-"+dd;
+          // 기본 종료일은 시작일 + 6개월
+          var endDate = new Date(clickedDate);
+          endDate.setMonth(endDate.getMonth()+6);
+          endDate.setDate(endDate.getDate()-1);
+          var ey = endDate.getFullYear(), em = String(endDate.getMonth()+1).padStart(2,"0"), ed = String(endDate.getDate()).padStart(2,"0");
+          var endStr = ey+"-"+em+"-"+ed;
+          // 새 시즌 객체 생성
+          var colorList = ["#AD1457","#E65100","#4527A0","#006064","#558B2F","#1565C0","#6D4C41","#283593","#00695C","#827717"];
+          var bgList    = ["#F06292","#FFA726","#9575CD","#4DD0E1","#AED581","#64B5F6","#A1887F","#7986CB","#4DB6AC","#D4E157"];
+          var ci = seasonSettings.length % colorList.length;
+          var newSeason = { id:"pi_"+Date.now(), label:"새 시즌", color:colorList[ci], bg:bgList[ci], start:startStr, end:endStr };
+          seasonSettings.push(newSeason);
+          openSingleSeasonModal(newSeason);
+        });
+
         evBody.appendChild(seasonSht);
         return;
       }
