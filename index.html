@@ -2027,7 +2027,8 @@ function renderGantt(){
   labelWrap.appendChild(labelBody);
 
   var tlWrap = document.createElement("div");
-  tlWrap.id = "g-timeline";
+  tlWrap.id = "gantt-tl-wrap";
+  tlWrap.dataset.startDate = YEAR + "-01-01";
   tlWrap.style.cssText = "flex:1;overflow:auto;";
 
   var tlInner = document.createElement("div");
@@ -3236,6 +3237,20 @@ function openSingleSeasonModal(s){
     modalRoot.innerHTML = "";
     showToast("시즌이 저장되었습니다.");
     renderGantt();
+    // 저장된 시즌 시작일로 스크롤
+    if(s.start){
+      setTimeout(function(){
+        var tlWrap = document.getElementById("gantt-tl-wrap");
+        if(!tlWrap) return;
+        var ganttStart = new Date(tlWrap.dataset.startDate||"");
+        var targetDate = new Date(s.start);
+        if(isNaN(ganttStart)||isNaN(targetDate)) return;
+        var diffDays = Math.floor((targetDate - ganttStart) / 86400000);
+        var COL_W = 28;
+        var scrollX = Math.max(0, diffDays * COL_W - tlWrap.offsetWidth / 2);
+        tlWrap.scrollLeft = scrollX;
+      }, 100);
+    }
   });
   btnRow.appendChild(saveBtn);
   modal.appendChild(btnRow);
