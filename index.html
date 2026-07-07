@@ -2546,6 +2546,19 @@ document.querySelectorAll(".app-tab-btn").forEach(function(btn){
    생산 관리 페이지
    ======================================================= */
 var PROD_ITEMS_CACHE_KEY = "vlvd_prod_items_cache";
+var PROD_DELETED_KEY = "vlvd_prod_deleted_items";
+var prodDeletedNames = {}; // 소문자 아이템명 → true
+
+function loadProdDeletedNames(){
+  try {
+    var s = localStorage.getItem(PROD_DELETED_KEY);
+    if(s) prodDeletedNames = JSON.parse(s)||{};
+  } catch(e){}
+}
+function saveProdDeletedNames(){
+  try { localStorage.setItem(PROD_DELETED_KEY, JSON.stringify(prodDeletedNames)); } catch(e){}
+}
+loadProdDeletedNames();
 var PROD_LINKS_CACHE_KEY = "vlvd_prod_links_cache";
 var prodItems = [];
 var costDataMap = {};
@@ -2781,6 +2794,9 @@ function autoSyncProdItemsFromCalendar(){
     var nameKey = name.toLowerCase();
     if(seenInThisRun[nameKey]) return;
     seenInThisRun[nameKey] = true;
+
+    // 블랙리스트에 있으면 자동 동기화 제외
+    if(prodDeletedNames[nameKey]) return;
 
     var season = getItemSeason(e) || "";
 
@@ -3064,6 +3080,8 @@ function renderProductionTable(){
     var delBtn = document.createElement("button"); delBtn.className = "prod-del-btn"; delBtn.textContent = "✕";
     delBtn.addEventListener("click", function(){
       if(!confirm(item.name + " 항목을 삭제할까요?")) return;
+      prodDeletedNames[(item.name||"").trim().toLowerCase()] = true;
+      saveProdDeletedNames();
       prodItems = prodItems.filter(function(p){ return p.id !== item.id; });
       saveProdItemsLocal();
       renderProductionTable();
