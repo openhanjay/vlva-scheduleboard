@@ -71,7 +71,10 @@
     position: sticky;
     top: 48px;
     margin-top: 4px;
+    transition: width 0.2s, opacity 0.2s;
   }
+  .side-col.hidden { width: 0; opacity: 0; overflow: hidden; pointer-events: none; }
+  #sidebar-toggle-btn { font-size:14px; padding:6px 10px; border:1px solid var(--color-border); border-radius:var(--radius-md); background:var(--color-bg); cursor:pointer; }
   .topbar {
     margin-top: 4px;
     margin-bottom: 12px;
@@ -330,6 +333,7 @@
           <button id="refresh-btn">새로고침</button>
           <button id="view-toggle-btn" style="border-color:var(--color-info);color:var(--color-info);">간트뷰</button>
           <button id="season-settings-btn" title="시즌 기간 설정" style="font-size:16px;padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);cursor:pointer;">⚙️</button>
+          <button id="sidebar-toggle-btn" title="사이드바 숨기기/보이기">◀</button>
         </div>
       </div>
     </div>
@@ -1141,6 +1145,7 @@ function loadAllData(year, month){
 }
 function renderPanelList(dateStr){
   try {
+  showSidebar();
   selectedDate = dateStr; panel.innerHTML = "";
   var dateEl = document.createElement("div"); dateEl.className = "panel-date"; dateEl.textContent = fmtDateKorean(dateStr); panel.appendChild(dateEl);
   if (events.length === 0){
@@ -1890,28 +1895,6 @@ function localAddEvent(evObj){
 function localUpdateEvent(evObj){
   for(var i=0;i<events.length;i++){
     if(String(events[i].id)===String(evObj.id)){
-      var oldItem = (events[i].item||"").trim();
-      var newItem = (evObj.item||"").trim();
-      // 아이템명이 변경된 경우 생산관리에서도 업데이트
-      if(oldItem && newItem && oldItem.toLowerCase() !== newItem.toLowerCase()){
-        var updated = false;
-        prodItems.forEach(function(p){
-          if((p.name||"").trim().toLowerCase() === oldItem.toLowerCase()){
-            p.name = newItem;
-            updated = true;
-          }
-        });
-        // 블랙리스트도 업데이트
-        if(prodDeletedNames[oldItem.toLowerCase()]){
-          delete prodDeletedNames[oldItem.toLowerCase()];
-          prodDeletedNames[newItem.toLowerCase()] = true;
-          saveProdDeletedNames();
-        }
-        if(updated){
-          saveProdItemsLocal();
-          apiPost({action:"createProdItem", data:prodItems.find(function(p){ return (p.name||"").toLowerCase()===newItem.toLowerCase(); })}).catch(function(){});
-        }
-      }
       events[i]=evObj; break;
     }
   }
@@ -2065,6 +2048,28 @@ function setWeekdayRow(isGantt){
 }
 
 document.getElementById("season-settings-btn").addEventListener("click", function(){ openSeasonSettingsModal(); });
+
+// 사이드바 토글 (기본: 숨김)
+var sideCol = document.querySelector(".side-col");
+var sidebarToggleBtn = document.getElementById("sidebar-toggle-btn");
+var sidebarVisible = false;
+sideCol.classList.add("hidden");
+sidebarToggleBtn.textContent = "▶";
+sidebarToggleBtn.title = "사이드바 보이기";
+sidebarToggleBtn.addEventListener("click", function(){
+  sidebarVisible = !sidebarVisible;
+  sideCol.classList.toggle("hidden", !sidebarVisible);
+  sidebarToggleBtn.textContent = sidebarVisible ? "◀" : "▶";
+  sidebarToggleBtn.title = sidebarVisible ? "사이드바 숨기기" : "사이드바 보이기";
+});
+function showSidebar(){
+  if(!sidebarVisible){
+    sidebarVisible = true;
+    sideCol.classList.remove("hidden");
+    sidebarToggleBtn.textContent = "◀";
+    sidebarToggleBtn.title = "사이드바 숨기기";
+  }
+}
 document.getElementById("view-toggle-btn").addEventListener("click", function(){
   currentView = (currentView === "calendar") ? "gantt" : "calendar";
   var btn = document.getElementById("view-toggle-btn");
@@ -2638,6 +2643,7 @@ document.querySelectorAll(".app-tab-btn").forEach(function(btn){
    생산 관리 페이지
    ======================================================= */
 var PROD_ITEMS_CACHE_KEY = "vlvd_prod_items_cache";
+var PROD_ITEMS_ORDER_KEY = "vlvd_prod_items_order";
 var PROD_DELETED_KEY = "vlvd_prod_deleted_items";
 var prodDeletedNames = {}; // 소문자 아이템명 → true
 
@@ -2651,6 +2657,23 @@ function saveProdDeletedNames(){
   try { localStorage.setItem(PROD_DELETED_KEY, JSON.stringify(prodDeletedNames)); } catch(e){}
 }
 loadProdDeletedNames();
+
+function saveProdItemsOrder(){
+  try { localStorage.setItem(PROD_ITEMS_ORDER_KEY, JSON.stringify(prodItems.map(function(p){ return p.id; }))); } catch(e){}
+}
+function applyProdItemsOrder(){
+  try {
+    var order = JSON.parse(localStorage.getItem(PROD_ITEMS_ORDER_KEY)||"[]");
+    if(!order.length) return;
+    var idMap = {};
+    prodItems.forEach(function(p){ idMap[String(p.id)] = p; });
+    var sorted = [];
+    order.forEach(function(id){ if(idMap[String(id)]) sorted.push(idMap[String(id)]); });
+    // 순서에 없는 새 아이템은 맨 앞에 추가
+    prodItems.forEach(function(p){ if(order.map(String).indexOf(String(p.id))===-1) sorted.unshift(p); });
+    if(sorted.length > 0) prodItems = sorted;
+  } catch(e){}
+}
 var PROD_LINKS_CACHE_KEY = "vlvd_prod_links_cache";
 var prodItems = [];
 var costDataMap = {};
@@ -2862,6 +2885,7 @@ function deduplicateProdItems(){
 }
 function saveProdItemsLocal(){
   try { localStorage.setItem(PROD_ITEMS_CACHE_KEY, JSON.stringify(prodItems)); } catch(e){}
+  saveProdItemsOrder();
 }
 function sortProdItemsRecentFirst(){
   prodItems.sort(function(a,b){
@@ -2935,6 +2959,7 @@ function loadProdItems(){
         return item;
       });
       sortProdItemsRecentFirst();
+      applyProdItemsOrder(); // 사용자가 지정한 순서 복원
       saveProdItemsLocal();
     }
   }).catch(function(){ });
@@ -3175,9 +3200,9 @@ function renderProductionTable(){
         e.preventDefault();
         tr.classList.remove("prod-drag-over");
         var fromId = e.dataTransfer.getData("text/plain");
-        if(fromId === dragItem.id) return;
-        var fromIdx = prodItems.findIndex(function(p){ return p.id === fromId; });
-        var toIdx = prodItems.findIndex(function(p){ return p.id === dragItem.id; });
+        if(String(fromId) === String(dragItem.id)) return;
+        var fromIdx = -1, toIdx = -1;
+        prodItems.forEach(function(p,i){ if(String(p.id)===String(fromId)) fromIdx=i; if(String(p.id)===String(dragItem.id)) toIdx=i; });
         if(fromIdx === -1 || toIdx === -1) return;
         var moved = prodItems.splice(fromIdx, 1)[0];
         prodItems.splice(toIdx, 0, moved);
