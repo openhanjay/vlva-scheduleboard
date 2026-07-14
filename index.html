@@ -2105,6 +2105,10 @@ function renderGantt(){
   var RECUR = ["브이팀회의","브이팀회의&지식DB","오픈한 북클럽"];
   var MONTH_NAMES = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
 
+  // 섹션 숨기기 상태 (최초 실행 시 초기화 - 기본: 둘 다 숨김)
+  if(typeof renderGantt._hideSchedule === "undefined") renderGantt._hideSchedule = true;
+  if(typeof renderGantt._hideProduct === "undefined") renderGantt._hideProduct = true;
+
   function dayIdx(dateStr){
     return Math.round((new Date(dateStr+"T00:00:00") - yearStart) / 86400000);
   }
@@ -2115,8 +2119,18 @@ function renderGantt(){
   var labelWrap = document.createElement("div");
   labelWrap.style.cssText = "width:"+LABEL_W+"px;flex-shrink:0;display:flex;flex-direction:column;border-right:2px solid var(--color-border);";
   var labelHead = document.createElement("div");
-  labelHead.style.cssText = "height:"+HEADER_H+"px;flex-shrink:0;background:var(--color-bg);border-bottom:2px solid var(--color-border);display:flex;align-items:center;padding:0 12px;font-size:13px;font-weight:700;color:var(--color-text-secondary);";
-  labelHead.textContent = "일정";
+  labelHead.style.cssText = "height:"+HEADER_H+"px;flex-shrink:0;background:var(--color-bg);border-bottom:2px solid var(--color-border);display:flex;align-items:center;padding:0 8px;gap:6px;";
+
+  // 토글 버튼들
+  function mkToggleBtn(label, isHidden, onClick){
+    var btn = document.createElement("button");
+    btn.textContent = (isHidden ? "▶ " : "▼ ") + label;
+    btn.style.cssText = "font-size:11px;padding:3px 7px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:"+(isHidden?"var(--color-bg-secondary)":"var(--color-bg)")+";cursor:pointer;color:var(--color-text-secondary);white-space:nowrap;";
+    btn.addEventListener("click", function(){ onClick(); renderGantt(); });
+    return btn;
+  }
+  labelHead.appendChild(mkToggleBtn("일정", renderGantt._hideSchedule, function(){ renderGantt._hideSchedule = !renderGantt._hideSchedule; }));
+  labelHead.appendChild(mkToggleBtn("상품", renderGantt._hideProduct, function(){ renderGantt._hideProduct = !renderGantt._hideProduct; }));
   var labelBody = document.createElement("div");
   labelBody.id = "g-label-body";
   labelBody.style.cssText = "overflow:hidden;flex:1;";
@@ -2185,10 +2199,21 @@ function renderGantt(){
     groupOrder = groupOrder.filter(function(k){ return k!=="production"&&k!=="shoot"&&k!=="pattern"&&k!=="prodetc"; });
     groupOrder.unshift("__season__"); // 시즌 맨 위
     groupOrder.push("production","shoot","pattern","__prodetc__"); // 상품+기타 맨 아래
+
+    var PROD_KEYS = ["production","shoot","pattern","__prodetc__"];
+    var SCHED_KEYS = Object.keys(CATS).concat(Object.keys(MEMBERS)).filter(function(k){ return PROD_KEYS.indexOf(k)===-1; });
+
     groupOrder.forEach(function(catKey){
+      // 시즌은 항상 표시
+      if(catKey === "__season__"){ /* 아래에서 처리 */ }
+      // 상품 섹션 숨기기
+      else if(PROD_KEYS.indexOf(catKey)!==-1 && renderGantt._hideProduct) return;
+      // 일정 섹션 숨기기 (시즌/상품 제외)
+      else if(SCHED_KEYS.indexOf(catKey)!==-1 && renderGantt._hideSchedule) return;
       // 시즌 섹션
       if(catKey === "__season__"){
         var validSeasons = seasonSettings.filter(function(s){ return s.start && s.end; });
+        if(validSeasons.length === 0) return;
 
         // 레인 배정: 겹치는 시즌을 다른 레인으로
         var lanes = [];
