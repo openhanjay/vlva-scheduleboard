@@ -326,7 +326,7 @@
             <div class="legend-item"><span class="dot" style="background:#E91E8C;"></span>기타(상품)</div>
             <div class="legend-item"><span class="dot" style="background:#43A047;"></span>커머스</div>
             <div class="legend-item"><span class="dot" style="background:#1E88E5;"></span>컨텐츠</div>
-            <div class="legend-item"><span class="dot" style="background:#7B1FA2;"></span>업체프로모션</div>
+            <div class="legend-item"><span class="dot" style="background:#006064;"></span>업체프로모션</div>
           </div>
           <button id="prev-btn">&#9666;</button>
           <button id="today-btn">오늘</button>
@@ -406,7 +406,7 @@ var CATS = {
   shoot:       { label: "샘플",     color: "#1ABC9C", bg: "#D5F5EF", text: "#0E6655" },
   pattern:     { label: "패턴",     color: "#8E44AD", bg: "#E8DAEF", text: "#4A235A" },
   prodetc:     { label: "기타",     color: "#E91E8C", bg: "#FCE4F3", text: "#8B0A52" },
-  promo:       { label: "업체프로모션", color: "#7B1FA2", bg: "#EDE7F6", text: "#4A148C" },
+  promo:       { label: "업체프로모션", color: "#006064", bg: "#B2EBF2", text: "#004D40" },
   content:     { label: "컨텐츠",   color: "#1E88E5", bg: "#BBDEFB", text: "#0D47A1" },
   commerce:    { label: "커머스",   color: "#43A047", bg: "#C8E6C9", text: "#1B5E20" },
   team:        { label: "팀 일정",  color: "#E4E212", bg: "#F5F59A", text: "#3D3A00" },
@@ -421,7 +421,7 @@ var GROUPS = [
   { key: "product",   label: "상품",     color: "#E24B4A", bg: "#FFCCCC", text: "#791F1F", subCats: ["production","shoot","pattern","prodetc"] },
   { key: "commerce",  label: "커머스",   color: "#43A047", bg: "#C8E6C9", text: "#1B5E20", subCats: [] },
   { key: "content",   label: "컨텐츠",   color: "#1E88E5", bg: "#BBDEFB", text: "#0D47A1", subCats: [] },
-  { key: "promo",     label: "업체프로모션", color: "#7B1FA2", bg: "#EDE7F6", text: "#4A148C", subCats: [] }
+  { key: "promo",     label: "업체프로모션", color: "#006064", bg: "#B2EBF2", text: "#004D40", subCats: [] }
 ];
 
 function getGroupByCat(catKey){
@@ -2365,6 +2365,7 @@ function renderGantt(){
           var barEndX = (ei2+1) * COL_W;
 
           var bar = document.createElement("div");
+          bar.setAttribute("data-season-idx", idx);
           bar.style.cssText = "position:absolute;left:"+barStartX+"px;width:"+(barEndX-barStartX-2)+"px;top:"+topOffset+"px;height:22px;background:"+s.bg+";border-left:3px solid "+s.color+";border-radius:4px;overflow:visible;cursor:pointer;z-index:1;";
 
           // 텍스트는 별도 span으로, 뷰포트 중앙에 sticky하게
@@ -2435,12 +2436,81 @@ function renderGantt(){
           openSingleSeasonModal(newSeason);
         });
 
+        var prci2 = CATS["promo"];
+        var promoEvs2 = events.filter(function(e){
+          if(e.category!=="promo") return false;
+          var es=e.date, ee=getEventDateEnd(e)||e.date;
+          var sm=parseInt(es.substring(0,4))*12+parseInt(es.substring(5,7))-1;
+          var em2=parseInt(ee.substring(0,4))*12+parseInt(ee.substring(5,7))-1;
+          for(var vm=sm;vm<=em2;vm++){ if(visMonths[vm]) return true; }
+          return false;
+        });
+
+        // 시즌+프로모션 통합 레인 배정
+        var allItems = [];
+        validSeasons.forEach(function(s){ allItems.push({type:"season", s:s, si:dayIdx(s.start), ei:dayIdx(s.end)}); });
+        promoEvs2.forEach(function(ev){ var ee=getEventDateEnd(ev)||ev.date; allItems.push({type:"promo", ev:ev, si:dayIdx(ev.date), ei:dayIdx(ee)}); });
+
+        var allLanes = [], allLaneAssign = [];
+        allItems.forEach(function(item){
+          var assigned=-1;
+          for(var li=0;li<allLanes.length;li++){
+            var conflict=false;
+            for(var ki=0;ki<allLanes[li].length;ki++){ if(item.si<=allLanes[li][ki].ei && item.ei>=allLanes[li][ki].si){ conflict=true; break; } }
+            if(!conflict){ assigned=li; break; }
+          }
+          if(assigned===-1){ assigned=allLanes.length; allLanes.push([]); }
+          allLanes[assigned].push(item);
+          allLaneAssign.push(assigned);
+        });
+
+        var totalLanes = Math.max(1, allLanes.length);
+        var totalHNew = totalLanes * LANE_H;
+
+        // 라벨/타임라인 높이 업데이트
+        seasonSh.style.height = totalHNew+"px";
+        seasonSht.style.height = totalHNew+"px";
+
+        // 프로모션 바 추가
+        allItems.forEach(function(item, idx){
+          var lane = allLaneAssign[idx];
+          if(item.type !== "promo") return;
+          var ev = item.ev;
+          var es=ev.date, ee=getEventDateEnd(ev)||ev.date;
+          var si2=Math.max(0,dayIdx(es)), ei2=Math.min(totalDays-1,dayIdx(ee));
+          if(si2>totalDays-1||ei2<0) return;
+          var topOffset = lane*LANE_H + Math.round((LANE_H-22)/2);
+          var bsx=si2*COL_W, bex=(ei2+1)*COL_W;
+          var bTxt=(ev.item||ev.company||"프로모션")+"  "+fmtShort(es)+(ee!==es?"~"+fmtShort(ee):"");
+          var bar2=document.createElement("div");
+          bar2.style.cssText="position:absolute;left:"+bsx+"px;width:"+(bex-bsx-2)+"px;top:"+topOffset+"px;height:22px;background:"+prci2.bg+";border-left:3px solid "+prci2.color+";border-radius:4px;overflow:visible;cursor:pointer;z-index:1;";
+          var txt2=document.createElement("span"); txt2.textContent=bTxt;
+          txt2.style.cssText="position:absolute;top:50%;transform:translateY(-50%);font-size:15px;font-weight:700;color:"+autoTextColor(prci2.bg)+";white-space:nowrap;pointer-events:none;left:6px;";
+          bar2.appendChild(txt2); bar2.addEventListener("click",function(e2){ e2.stopPropagation(); switchToCalendar(es); });
+          seasonSht.appendChild(bar2);
+          function upd2(){ var sl=tlWrap.scrollLeft,vw=tlWrap.offsetWidth,vl=Math.max(bsx,sl),vr=Math.min(bex,sl+vw); if(vl>=vr){txt2.style.left="6px";return;} txt2.style.left=Math.max(6,Math.min((vl+vr)/2-bsx-txt2.offsetWidth/2,bex-bsx-txt2.offsetWidth-6))+"px"; }
+          tlWrap.__seasonUpdaters=tlWrap.__seasonUpdaters||[]; tlWrap.__seasonUpdaters.push(upd2);
+        });
+
+        // 시즌 바 레인 위치 업데이트
+        allItems.forEach(function(item, idx){
+          if(item.type !== "season") return;
+          var lane = allLaneAssign[idx];
+          var s = item.s;
+          var si2=Math.max(0,dayIdx(s.start)), ei2=Math.min(totalDays-1,dayIdx(s.end));
+          if(si2>totalDays-1||ei2<0) return;
+          var topOffset = lane*LANE_H + Math.round((LANE_H-22)/2);
+          // 기존 바 찾아서 top 위치 업데이트는 복잡하니 seasonSht에 직접 추가 (기존 바는 위에서 이미 추가됨)
+          // 시즌 바는 validSeasons 루프에서 이미 추가됐으므로 top만 수정 필요
+          // seasonSht의 자식 중 해당 바를 찾아 top 업데이트
+          var bars = seasonSht.querySelectorAll("div[data-season-idx]");
+          if(bars[allItems.slice(0,idx).filter(function(x){ return x.type==="season"; }).length]){
+            bars[allItems.slice(0,idx).filter(function(x){ return x.type==="season"; }).length].style.top = topOffset+"px";
+          }
+        });
+
         evBody.appendChild(seasonSht);
         return;
-      }
-
-      // 기타 섹션 (개별 행으로 표시)
-      if(catKey === "__prodetc__"){
         var prodetcEvs = events.filter(function(e){
           if(e.category!=="prodetc") return false;
           if(RECUR.indexOf(e.item)!==-1) return false;
@@ -2481,7 +2551,7 @@ function renderGantt(){
           var bar=document.createElement("div");
           bar.style.cssText="position:absolute;left:"+(si*COL_W)+"px;width:"+((ei-si+1)*COL_W-4)+"px;top:5px;bottom:5px;background:"+pci.bg+";border-left:3px solid "+pci.color+";border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:11px;font-weight:700;color:"+pci.text+";white-space:nowrap;overflow:visible;cursor:pointer;z-index:1;";
           bar.textContent=txt;
-          bar.addEventListener("click",function(){ switchToCalendar(es); });
+          bar.addEventListener("click",function(){ openGanttEventEdit(ev); });
           tr.appendChild(bar);
           evBody.appendChild(tr);
         });
@@ -2529,7 +2599,7 @@ function renderGantt(){
           var bar=document.createElement("div");
           bar.style.cssText="position:absolute;left:"+(si*COL_W)+"px;width:"+((ei-si+1)*COL_W-4)+"px;top:5px;bottom:5px;background:"+prci.bg+";border-left:3px solid "+prci.color+";border-radius:4px;display:flex;align-items:center;padding:0 8px;font-size:11px;font-weight:700;color:"+prci.text+";white-space:nowrap;overflow:visible;cursor:pointer;z-index:1;";
           bar.textContent=txt;
-          bar.addEventListener("click",function(){ switchToCalendar(es); });
+          bar.addEventListener("click",function(){ openGanttEventEdit(ev); });
           tr.appendChild(bar);
           evBody.appendChild(tr);
         });
@@ -2667,7 +2737,7 @@ function renderGantt(){
             var bar=document.createElement("div");
             bar.style.cssText="position:absolute;left:"+(si*COL_W)+"px;top:"+topOffset+"px;height:"+BAR_H+"px;min-width:"+((ei-si+1)*COL_W-4)+"px;background:"+cinfo.bg+";border-left:3px solid "+cinfo.color+";border-radius:4px;display:flex;align-items:center;padding:0 7px;font-size:11px;font-weight:700;color:"+cinfo.text+";white-space:nowrap;overflow:visible;cursor:pointer;z-index:1;";
             bar.textContent=barTxt; bar.title=barTxt;
-            bar.addEventListener("click",function(){ switchToCalendar(startEv.date); });
+            bar.addEventListener("click",function(){ openGanttEventEdit(startEv); });
             tr.appendChild(bar);
 
             // 끝점 dot
@@ -2715,7 +2785,7 @@ function renderGantt(){
         var bar=document.createElement("div");
         bar.style.cssText="position:absolute;left:"+(si*COL_W)+"px;width:"+((ei-si+1)*COL_W-4)+"px;top:5px;bottom:5px;background:"+ci.bg+";border-left:3px solid "+ci.color+";border-radius:4px;display:flex;align-items:center;padding:0 7px;font-size:11px;font-weight:700;color:"+ci.text+";white-space:nowrap;overflow:visible;cursor:pointer;z-index:1;";
         bar.textContent=txt;
-        bar.addEventListener("click",function(){ switchToCalendar(es); });
+        bar.addEventListener("click",function(){ openGanttEventEdit(ev); });
         tr.appendChild(bar);
         evBody.appendChild(tr);
       });
@@ -2729,7 +2799,12 @@ function renderGantt(){
     });
   }
 
-  function switchToCalendar(dateStr){
+  function openGanttEventEdit(ev){
+  showSidebar();
+  renderPanelForm(ev.date, ev);
+}
+
+function switchToCalendar(dateStr){
     currentView="calendar";
     var btn=document.getElementById("view-toggle-btn");
     btn.textContent="간트뷰"; btn.style.background=""; btn.style.color="var(--color-info)"; btn.style.borderColor="var(--color-info)";
@@ -3698,6 +3773,21 @@ function openSingleSeasonModal(s){
   modal.appendChild(dateRow);
 
   var btnRow = document.createElement("div"); btnRow.className = "cost-modal-btnrow";
+
+  // 삭제 버튼 (왼쪽)
+  var delBtn = document.createElement("button"); delBtn.textContent = "🗑 삭제";
+  delBtn.style.cssText = "color:#E24B4A;border-color:#E24B4A;margin-right:auto;";
+  delBtn.addEventListener("click", function(){
+    if(!confirm("\"" + (s.season ? "["+s.season+"] " : "") + (s.label||"") + "\" 시즌을 삭제할까요?")) return;
+    var idx = seasonSettings.indexOf(s);
+    if(idx !== -1) seasonSettings.splice(idx, 1);
+    saveSeasonSettings();
+    modalRoot.innerHTML = "";
+    showToast("시즌이 삭제되었습니다.");
+    renderGantt();
+  });
+  btnRow.appendChild(delBtn);
+
   var cancelBtn = document.createElement("button"); cancelBtn.textContent = "취소";
   cancelBtn.addEventListener("click", function(){ modalRoot.innerHTML=""; });
   btnRow.appendChild(cancelBtn);
