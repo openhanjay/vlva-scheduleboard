@@ -372,6 +372,7 @@
       </select>
       <input type="text" id="prod-item-input" placeholder="신상 아이템명 입력" />
       <button class="primary" id="prod-add-btn">+ 아이템 추가</button>
+      <button id="prod-blacklist-btn" title="삭제 목록 관리" style="padding:6px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);cursor:pointer;font-size:13px;">🚫 숨김 목록</button>
     </div>
   </div>
   <div class="prod-table-wrap">
@@ -2899,7 +2900,7 @@ function switchTab(pageId){
   document.querySelectorAll(".app-tab-btn").forEach(function(b){ b.classList.remove("active"); });
   document.getElementById(pageId).classList.add("active");
   document.querySelector('.app-tab-btn[data-page="'+pageId+'"]').classList.add("active");
-  if(pageId === "production-page"){ deduplicateProdItems(); autoSyncProdItemsFromCalendar(); renderProductionTable(); }
+  if(pageId === "production-page"){ deduplicateProdItems(); autoSyncProdItemsFromCalendar(); applyProdItemsOrder(); renderProductionTable(); }
 }
 document.querySelectorAll(".app-tab-btn").forEach(function(btn){
   btn.addEventListener("click", function(){ switchTab(btn.dataset.page); });
@@ -3213,7 +3214,32 @@ function autoSyncProdItemsFromCalendar(){
       if(res && res.id){ newItem.id = res.id; saveProdItemsLocal(); }
     }).catch(function(){});
   });
+  applyProdItemsOrder(); // 드래그 순서 복원
   saveProdItemsLocal();
+}
+
+function saveMemoToServer(item){
+  if(!item || !item.id) return;
+  apiPost({action:"saveMemo", itemId:item.id, itemName:item.name||"", memoLog:item.memoLog||[]}).catch(function(){});
+}
+function loadMemosFromServer(){
+  return apiGet("memos").then(function(data){
+    if(!data || !Array.isArray(data.memos)) return;
+    var memoMapById={}, memoMapByName={};
+    data.memos.forEach(function(m){
+      memoMapById[String(m.itemId)] = m;
+      if(m.itemName) memoMapByName[(m.itemName||"").trim().toLowerCase()] = m;
+    });
+    var updated = false;
+    prodItems.forEach(function(p){
+      var m = memoMapById[String(p.id)] || memoMapByName[(p.name||"").trim().toLowerCase()];
+      if(m && m.memoLog && m.memoLog.length > 0){
+        p.memoLog = m.memoLog;
+        updated = true;
+      }
+    });
+    if(updated){ saveProdItemsLocal(); renderProductionTable(); }
+  }).catch(function(){});
 }
 
 function loadProdItems(){
@@ -3221,19 +3247,29 @@ function loadProdItems(){
   return apiGet("prodItems").then(function(data){
     if(data && Array.isArray(data.items) && data.items.length > 0){
       // 로컬에 있는 memoLog/memo/order 보존 (서버에는 없음)
-      var localMap = {};
-      prodItems.forEach(function(p){ localMap[p.id] = p; });
-      prodItems = data.items.map(function(item){
-        var local = localMap[item.id];
-        if(local){
-          if(local.memoLog && local.memoLog.length > 0) item.memoLog = local.memoLog;
-          if(local.memo) item.memo = local.memo;
-        }
-        return item;
+      var localMapById = {}, localMapByName = {};
+      prodItems.forEach(function(p){
+        localMapById[String(p.id)] = p;
+        if(p.name) localMapByName[(p.name||"").trim().toLowerCase()] = p;
       });
+      prodItems = data.items
+        .filter(function(item){
+          // 블랙리스트에 있는 아이템은 서버에서 와도 제외
+          return !prodDeletedNames[(item.name||"").trim().toLowerCase()];
+        })
+        .map(function(item){
+          // ID로 먼저 찾고, 없으면 이름으로 fallback
+          var local = localMapById[String(item.id)] || localMapByName[(item.name||"").trim().toLowerCase()];
+          if(local){
+            if(local.memoLog && local.memoLog.length > 0) item.memoLog = local.memoLog;
+            if(local.memo) item.memo = local.memo;
+          }
+          return item;
+        });
       sortProdItemsRecentFirst();
       applyProdItemsOrder(); // 사용자가 지정한 순서 복원
       saveProdItemsLocal();
+      loadMemosFromServer(); // 서버 메모 로드
     }
   }).catch(function(){ });
 }
@@ -3247,6 +3283,61 @@ function loadCostData(){
     }
   }).catch(function(){});
 }
+
+document.getElementById("prod-blacklist-btn").addEventListener("click", function(){
+  var modalRoot = document.getElementById("modal-root");
+  modalRoot.innerHTML = "";
+  var overlay = document.createElement("div"); overlay.className = "modal-overlay";
+  var modal = document.createElement("div"); modal.className = "cost-modal"; modal.style.maxWidth = "400px";
+  overlay.appendChild(modal);
+  overlay.addEventListener("click", function(e){ if(e.target===overlay) modalRoot.innerHTML=""; });
+
+  function buildBlacklistModal(){
+    modal.innerHTML = "";
+    var h2 = document.createElement("h2"); h2.textContent = "🚫 숨김 처리된 아이템"; modal.appendChild(h2);
+    var keys = Object.keys(prodDeletedNames);
+    if(keys.length === 0){
+      var empty = document.createElement("p"); empty.textContent = "숨김 처리된 아이템이 없어요."; empty.style.cssText="color:var(--color-text-tertiary);text-align:center;padding:16px 0;"; modal.appendChild(empty);
+    } else {
+      var list = document.createElement("div"); list.style.cssText="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;";
+      keys.forEach(function(key){
+        var row = document.createElement("div"); row.style.cssText="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg-secondary);";
+        var name = document.createElement("span"); name.textContent = key; name.style.cssText="font-size:14px;font-weight:600;";
+        var restoreBtn = document.createElement("button"); restoreBtn.textContent = "복원";
+        restoreBtn.style.cssText="padding:4px 10px;font-size:12px;border:1px solid var(--color-info);border-radius:var(--radius-md);background:var(--color-bg);color:var(--color-info);cursor:pointer;";
+        restoreBtn.addEventListener("click", function(){
+          delete prodDeletedNames[key];
+          saveProdDeletedNames();
+          showToast("\""+key+"\" 복원됐습니다. 목록을 다시 불러올게요.");
+          modalRoot.innerHTML="";
+          loadProdItems().then(function(){
+            applyProdItemsOrder();
+            renderProductionTable();
+          });
+        });
+        row.appendChild(name); row.appendChild(restoreBtn);
+        list.appendChild(row);
+      });
+      modal.appendChild(list);
+      var clearBtn = document.createElement("button"); clearBtn.textContent = "전체 초기화";
+      clearBtn.style.cssText="width:100%;padding:8px;border:1px solid #E24B4A;border-radius:var(--radius-md);background:var(--color-bg);color:#E24B4A;cursor:pointer;font-size:13px;margin-bottom:8px;";
+      clearBtn.addEventListener("click", function(){
+        if(!confirm("숨김 목록을 전체 초기화할까요? 삭제했던 아이템들이 다시 나타날 수 있어요.")) return;
+        prodDeletedNames = {};
+        saveProdDeletedNames();
+        showToast("숨김 목록이 초기화됐습니다.");
+        buildBlacklistModal();
+      });
+      modal.appendChild(clearBtn);
+    }
+    var closeBtn = document.createElement("button"); closeBtn.textContent = "닫기";
+    closeBtn.style.cssText="width:100%;padding:8px;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-bg);cursor:pointer;font-size:13px;";
+    closeBtn.addEventListener("click", function(){ modalRoot.innerHTML=""; });
+    modal.appendChild(closeBtn);
+  }
+  buildBlacklistModal();
+  modalRoot.appendChild(overlay);
+});
 
 document.getElementById("prod-add-btn").addEventListener("click", function(){
   var nameInp = document.getElementById("prod-item-input");
@@ -4558,6 +4649,7 @@ function openMemoModal(item){
           if(!confirm("이 메모를 삭제할까요?")) return;
           item.memoLog.splice(idx, 1);
           saveProdItemsLocal();
+          saveMemoToServer(item); // 서버에도 저장
           renderProductionTable();
           apiPost({action:"createProdItem", data:item}).catch(function(){});
           openMemoModal(item);
@@ -4604,6 +4696,7 @@ function openMemoModal(item){
       + " " + String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
     item.memoLog.push({ text: text, ts: ts });
     saveProdItemsLocal();
+    saveMemoToServer(item); // 서버에도 저장
     renderProductionTable();
     showToast("메모가 저장되었습니다.");
     apiPost({action:"createProdItem", data:item}).catch(function(){});
