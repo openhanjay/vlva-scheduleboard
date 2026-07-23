@@ -761,7 +761,7 @@ function computeEventLanes(){
 
 function render(){
   syncSelects();
-  try { computeEventLanes(); } catch(e){ console.error("computeEventLanes error:", e); }
+  computeEventLanes();
   grid.style.display = "";
   grid.innerHTML = "";
   var firstDay = new Date(view.year, view.month, 1).getDay();
@@ -2874,12 +2874,13 @@ document.getElementById("month-memo").addEventListener("input", function(){
   for (var y = curY; y <= curY + 5; y++){
     var o = document.createElement("option"); o.value = y; o.textContent = y + "년"; ySel.appendChild(o);
   }
-  ySel.value = String(curY);
   var mSel = document.getElementById("month-select");
   for (var m = 0; m < 12; m++){
     var o2 = document.createElement("option"); o2.value = m; o2.textContent = (m+1) + "월"; mSel.appendChild(o2);
   }
-  mSel.value = String(today.getMonth());
+  // select 표시값을 오늘 날짜로 동기화 (view는 이미 오늘로 초기화되어 있음)
+  ySel.value = String(view.year);
+  mSel.value = String(view.month);
 })();
 
 function syncSelects(){
@@ -3681,7 +3682,7 @@ function openIncomingQtyModal(cev, dateStr){
 
   var meta = document.createElement("div");
   meta.style.cssText = "font-size:12px;color:var(--color-text-secondary);margin-bottom:12px;";
-  meta.textContent = "발주수량을 확인하고 실제 입고수량을 입력해주세요.";
+  meta.textContent = "발주수량을 확인하고 실제 입고수량을 입력해주세요. (입력하지 않으면 0으로 처리)";
   modal.appendChild(meta);
 
   // 컬러/사이즈 파싱
@@ -3701,7 +3702,7 @@ function openIncomingQtyModal(cev, dateStr){
 
   // 입고수량 저장 객체 {color_size: qty}
   var inQtyMap = {};
-  colors.forEach(function(c){ sizes.forEach(function(s){ inQtyMap[c+"__"+s] = getOrderQty(c,s); }); });
+  colors.forEach(function(c){ sizes.forEach(function(s){ inQtyMap[c+"__"+s] = 0; }); });
 
   if(colors.length === 0 || sizes.length === 0){
     var note = document.createElement("p"); note.textContent = "등록된 옵션 데이터가 없어요. 발주수량표에서 수량을 먼저 등록해주세요.";
@@ -3721,7 +3722,7 @@ function openIncomingQtyModal(cev, dateStr){
       th.style.cssText = "background:var(--color-bg-tertiary);border:1px solid var(--color-border);padding:7px 10px;font-weight:700;text-align:center;";
       trh.appendChild(th);
     });
-    var thTot = document.createElement("th"); thTot.textContent = "합계"; thTot.colSpan = 2;
+    var thTot = document.createElement("th"); thTot.textContent = "차이";
     thTot.style.cssText = "background:var(--color-bg-secondary);border:1px solid var(--color-border);padding:7px 10px;font-weight:700;text-align:center;";
     trh.appendChild(thTot); thead.appendChild(trh); table.appendChild(thead);
 
@@ -3735,38 +3736,37 @@ function openIncomingQtyModal(cev, dateStr){
         trSub.appendChild(th);
       });
     });
-    ["발주","입고"].forEach(function(t){
-      var th = document.createElement("th"); th.textContent = t;
-      th.style.cssText = "background:var(--color-bg-secondary);border:1px solid var(--color-border);padding:4px 10px;font-size:11px;font-weight:600;text-align:center;color:var(--color-text-secondary);";
-      trSub.appendChild(th);
-    });
+    var thSubDiff = document.createElement("th"); thSubDiff.style.cssText = "background:var(--color-bg-secondary);border:1px solid var(--color-border);padding:4px 10px;";
+    trSub.appendChild(thSubDiff);
     table.appendChild(trSub);
 
     // 입력 업데이트 함수
     var allInputs = [];
-    var totalOrderCells = {}, totalInCells = {};
-    var grandOrderCell, grandInCell;
+    var diffCells = {}, colInCells = {};
+    var grandDiffCell;
+
+    function diffColor(diff){ return diff>0 ? "#1565C0" : diff<0 ? "#E24B4A" : "var(--color-text-secondary)"; }
+    function diffText(diff){ return diff>0 ? "+"+diff : String(diff); }
 
     function updateTotals(){
       var grandOrder=0, grandIn=0;
-      var colOrder={}, colIn={};
-      sizes.forEach(function(s){ colOrder[s]=0; colIn[s]=0; });
+      var colIn={};
+      sizes.forEach(function(s){ colIn[s]=0; });
       colors.forEach(function(c){
         var rowOrder=0, rowIn=0;
         sizes.forEach(function(s){
-          var oq=getOrderQty(c,s); rowOrder+=oq; colOrder[s]+=oq;
+          var oq=getOrderQty(c,s); rowOrder+=oq;
           var iq=inQtyMap[c+"__"+s]||0; rowIn+=iq; colIn[s]+=iq;
         });
         grandOrder+=rowOrder; grandIn+=rowIn;
-        if(totalOrderCells[c]) totalOrderCells[c].textContent=rowOrder;
-        if(totalInCells[c]) totalInCells[c].textContent=rowIn;
+        var rowDiff = rowIn - rowOrder;
+        if(diffCells[c]){ diffCells[c].textContent=diffText(rowDiff); diffCells[c].style.color=diffColor(rowDiff); }
       });
       sizes.forEach(function(s){
-        if(totalOrderCells["__sz_"+s]) totalOrderCells["__sz_"+s].textContent=colOrder[s];
-        if(totalInCells["__sz_"+s]) totalInCells["__sz_"+s].textContent=colIn[s];
+        if(colInCells[s]) colInCells[s].textContent = colIn[s];
       });
-      if(grandOrderCell) grandOrderCell.textContent=grandOrder;
-      if(grandInCell) grandInCell.textContent=grandIn;
+      var grandDiff = grandIn - grandOrder;
+      if(grandDiffCell){ grandDiffCell.textContent=diffText(grandDiff); grandDiffCell.style.color=diffColor(grandDiff); }
     }
 
     var tbody = document.createElement("tbody");
@@ -3782,17 +3782,16 @@ function openIncomingQtyModal(cev, dateStr){
         tr.appendChild(tdO);
         // 입고수량 입력
         var tdI = document.createElement("td"); tdI.style.cssText = "border:1px solid var(--color-border);padding:3px 4px;text-align:center;";
-        var inp = document.createElement("input"); inp.type="number"; inp.min="0";
-        inp.value = inQtyMap[c+"__"+s];
+        var inp = document.createElement("input"); inp.type="text"; inp.inputMode="numeric"; inp.placeholder="0";
+        inp.value = "";
         inp.style.cssText = "width:60px;padding:3px 6px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;text-align:center;background:var(--color-bg);";
         (function(cc,ss){ inp.addEventListener("input",function(){ inQtyMap[cc+"__"+ss]=parseInt(inp.value)||0; updateTotals(); }); })(c,s);
         allInputs.push(inp); tdI.appendChild(inp); tr.appendChild(tdI);
       });
-      // 행 합계
-      var tdTO = document.createElement("td"); tdTO.style.cssText = "border:1px solid var(--color-border);padding:6px 10px;text-align:center;font-weight:700;background:var(--color-bg-secondary);";
-      var tdTI = document.createElement("td"); tdTI.style.cssText = "border:1px solid var(--color-border);padding:6px 10px;text-align:center;font-weight:700;background:var(--color-bg-secondary);";
-      totalOrderCells[c]=tdTO; totalInCells[c]=tdTI;
-      tr.appendChild(tdTO); tr.appendChild(tdTI);
+      // 행 차이
+      var tdDiff = document.createElement("td"); tdDiff.style.cssText = "border:1px solid var(--color-border);padding:6px 10px;text-align:center;font-weight:800;background:var(--color-bg-secondary);";
+      diffCells[c]=tdDiff;
+      tr.appendChild(tdDiff);
       tbody.appendChild(tr);
     });
 
@@ -3801,13 +3800,15 @@ function openIncomingQtyModal(cev, dateStr){
     var tdTotLabel = document.createElement("td"); tdTotLabel.textContent="합계"; tdTotLabel.style.cssText="border:1px solid var(--color-border);padding:7px 10px;font-weight:800;background:var(--color-bg-secondary);";
     trTot.appendChild(tdTotLabel);
     sizes.forEach(function(s){
-      var tdO = document.createElement("td"); tdO.style.cssText="border:1px solid var(--color-border);padding:7px 10px;text-align:center;font-weight:700;background:var(--color-bg-secondary);"; totalOrderCells["__sz_"+s]=tdO;
-      var tdI = document.createElement("td"); tdI.style.cssText="border:1px solid var(--color-border);padding:7px 10px;text-align:center;font-weight:700;background:var(--color-bg-secondary);"; totalInCells["__sz_"+s]=tdI;
+      var oTotal = colors.reduce(function(a,c){ return a+getOrderQty(c,s); },0);
+      var tdO = document.createElement("td"); tdO.textContent=oTotal; tdO.style.cssText="border:1px solid var(--color-border);padding:7px 10px;text-align:center;font-weight:700;background:var(--color-bg-secondary);color:var(--color-text-secondary);";
+      var tdI = document.createElement("td"); tdI.style.cssText="border:1px solid var(--color-border);padding:7px 10px;text-align:center;font-weight:700;background:var(--color-bg-secondary);";
+      colInCells[s]=tdI;
       trTot.appendChild(tdO); trTot.appendChild(tdI);
     });
-    var tdGO = document.createElement("td"); tdGO.style.cssText="border:1px solid var(--color-border);padding:7px 10px;text-align:center;font-weight:800;background:var(--color-bg-secondary);"; grandOrderCell=tdGO;
-    var tdGI = document.createElement("td"); tdGI.style.cssText="border:1px solid var(--color-border);padding:7px 10px;text-align:center;font-weight:800;background:var(--color-bg-secondary);"; grandInCell=tdGI;
-    trTot.appendChild(tdGO); trTot.appendChild(tdGI);
+    var tdGDiff = document.createElement("td"); tdGDiff.style.cssText="border:1px solid var(--color-border);padding:7px 10px;text-align:center;font-weight:800;background:var(--color-bg-secondary);";
+    grandDiffCell=tdGDiff;
+    trTot.appendChild(tdGDiff);
     tbody.appendChild(trTot); table.appendChild(tbody); modal.appendChild(table);
     updateTotals();
   }
@@ -3837,51 +3838,6 @@ function openIncomingQtyModal(cev, dateStr){
   btnRow.appendChild(confirmBtn); modal.appendChild(btnRow);
   modalRoot.appendChild(overlay);
 }
-  var modalRoot = document.getElementById("modal-root");
-  modalRoot.innerHTML = "";
-  var overlay = document.createElement("div"); overlay.className = "modal-overlay";
-  var modal = document.createElement("div"); modal.className = "cost-modal"; modal.style.maxWidth = "460px";
-  overlay.appendChild(modal);
-  overlay.addEventListener("click", function(e){ if(e.target===overlay) modalRoot.innerHTML=""; });
-
-  var h2 = document.createElement("h2");
-  h2.textContent = "입고 완료 - " + (cev.item||"") + (cev.company ? " · "+cev.company : "");
-  modal.appendChild(h2);
-
-  // 기존 발주 수량 variants 파싱
-  var existingVariants = [];
-  try { existingVariants = JSON.parse(cev.variants||"[]"); } catch(e){}
-
-  var note = document.createElement("p");
-  note.textContent = "실제 입고된 수량을 입력해주세요. (비워두면 발주수량과 동일하게 처리)";
-  note.style.cssText = "font-size:12px;color:var(--color-text-secondary);margin:0 0 14px;";
-  modal.appendChild(note);
-
-  // 수량 입력 테이블
-  var table = document.createElement("div");
-  table.style.cssText = "display:flex;flex-direction:column;gap:6px;margin-bottom:16px;max-height:300px;overflow-y:auto;";
-
-  var incomingVariants = existingVariants.map(function(v){ return Object.assign({}, v, {inQty: v.qty||0}); });
-
-  var headerRow = document.createElement("div");
-  headerRow.style.cssText = "display:grid;grid-template-columns:1fr 1fr 80px 80px;gap:8px;font-size:12px;font-weight:700;color:var(--color-text-secondary);padding:0 4px;";
-  ["컬러","사이즈","발주수량","입고수량"].forEach(function(t){ var d=document.createElement("div"); d.textContent=t; headerRow.appendChild(d); });
-  table.appendChild(headerRow);
-
-  incomingVariants.forEach(function(v, vi){
-    var row = document.createElement("div");
-    row.style.cssText = "display:grid;grid-template-columns:1fr 1fr 80px 80px;gap:8px;align-items:center;padding:4px;background:var(--color-bg-secondary);border-radius:var(--radius-md);";
-    var colorD = document.createElement("div"); colorD.textContent = v.color||"-"; colorD.style.fontSize="13px";
-    var sizeD = document.createElement("div"); sizeD.textContent = v.size||"-"; sizeD.style.fontSize="13px";
-    var qtyD = document.createElement("div"); qtyD.textContent = v.qty||0; qtyD.style.cssText="font-size:13px;text-align:center;font-weight:700;";
-    var inInp = document.createElement("input"); inInp.type="number"; inInp.min="0"; inInp.value=v.inQty||v.qty||0;
-    inInp.style.cssText = "width:100%;padding:4px 6px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:13px;text-align:center;background:var(--color-bg);";
-    inInp.addEventListener("input", function(){ incomingVariants[vi].inQty = parseInt(inInp.value)||0; });
-    row.appendChild(colorD); row.appendChild(sizeD); row.appendChild(qtyD); row.appendChild(inInp);
-    table.appendChild(row);
-  });
-  modal.appendChild(table);
-
 /* ---- 수량 확인 팝업 (발주 vs 입고) ---- */
 function openQtyCheckModal(ev){
   var variants = parseVariants(ev.variants);
@@ -5452,7 +5408,6 @@ function openCostModal(item){
   modalRoot.appendChild(overlay);
 }
 
-syncSelects();
 refreshAll();
 renderMemberPanel();
 Promise.all([loadProdItems(), loadEvents(), loadCostData()]).then(function(){
