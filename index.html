@@ -1231,7 +1231,7 @@ function renderPanelList(dateStr){
       mainEl.textContent = parts.join("·");
     }
     item.appendChild(mainEl);
-    if (ev.category === "production" && ev.variants){
+    if (ev.category === "production" && ev.variants && ev.stage!=="completed" && ev.stage!=="completed_p"){
       var parsedVariants = parseVariants(ev.variants).filter(function(v){ return v.color || v.size || v.qty || v.parentColor; });
       var colorGroups = {};
       var colorOrder = [];
@@ -2000,14 +2000,16 @@ function parseVariants(str){
   if (!str) return [{type:"color",color:"",size:"",qty:"",cutQty:""}];
   return str.split(";").map(function(part){
     part=part.trim();
-    if (part.indexOf("*")===0){ var bits=part.substring(1).split("/").map(function(s){return s.trim();}); return {type:"size",parentColor:bits[0]||"",size:bits[1]||"",qty:bits[2]||"",cutQty:bits[3]||""}; }
-    var bits=part.split("/").map(function(s){return s.trim();}); return {type:"color",color:bits[0]||"",size:bits[1]||"",qty:bits[2]||"",cutQty:bits[3]||""};
+    if (part.indexOf("*")===0){ var bits=part.substring(1).split("/").map(function(s){return s.trim();}); return {type:"size",parentColor:bits[0]||"",size:bits[1]||"",qty:bits[2]||"",cutQty:bits[3]||"",inQty:bits[4]!==undefined&&bits[4]!==""?bits[4]:undefined}; }
+    var bits=part.split("/").map(function(s){return s.trim();}); return {type:"color",color:bits[0]||"",size:bits[1]||"",qty:bits[2]||"",cutQty:bits[3]||"",inQty:bits[4]!==undefined&&bits[4]!==""?bits[4]:undefined};
   });
 }
 function stringifyVariants(arr){
   return arr.filter(function(v){return v.color||v.size||v.qty||v.cutQty;}).map(function(v){
-    if (v.type==="size"){ return "*"+[v.parentColor||"",v.size,v.qty,v.cutQty||""].join("/"); }
-    return [v.color,v.size,v.qty,v.cutQty||""].join("/");
+    var fields;
+    if (v.type==="size"){ fields=[v.parentColor||"",v.size,v.qty,v.cutQty||""]; if(v.inQty!==undefined) fields.push(v.inQty); return "*"+fields.join("/"); }
+    fields=[v.color,v.size,v.qty,v.cutQty||""]; if(v.inQty!==undefined) fields.push(v.inQty);
+    return fields.join("/");
   }).join("; ");
 }
 function findProductionInstructRecords(){
@@ -3821,11 +3823,11 @@ function openIncomingQtyModal(cev, dateStr){
     confirmBtn.disabled=true; confirmBtn.textContent="처리 중...";
     // inQtyMap을 variants에 반영
     var updatedVariants = variants.map(function(v){
-      var key = (v.color||"")+"__"+(v.size||"");
+      var key = (v.type==="size" ? (v.parentColor||"") : (v.color||""))+"__"+(v.size||"");
       var iq = inQtyMap[key];
-      return Object.assign({}, v, {inQty: iq !== undefined ? iq : parseInt(v.qty)||0});
+      return Object.assign({}, v, {inQty: iq !== undefined ? iq : 0});
     });
-    var updatedVariantsStr = JSON.stringify(updatedVariants);
+    var updatedVariantsStr = stringifyVariants(updatedVariants);
     var updated = Object.assign({}, cev, {stage:"completed", variants:updatedVariantsStr});
     localUpdateEvent(updated);
     renderCurrentView(); renderPanelList(dateStr);
@@ -3859,7 +3861,7 @@ function openQtyCheckModal(ev){
                .filter(function(s){ return !!s; }).filter(function(s,i,a){ return a.indexOf(s)===i; });
 
   function getOrderQty(c,s){ var r=colorRows.filter(function(v){ return v.color===c&&v.size===s; }); if(r.length) return parseInt(r[0].qty)||0; var r2=sizeRows.filter(function(v){ return v.parentColor===c&&v.size===s; }); if(r2.length) return parseInt(r2[0].qty)||0; return 0; }
-  function getInQty(c,s){ var r=colorRows.filter(function(v){ return v.color===c&&v.size===s; }); if(r.length&&r[0].inQty!==undefined) return parseInt(r[0].inQty); var r2=sizeRows.filter(function(v){ return v.parentColor===c&&v.size===s; }); if(r2.length&&r2[0].inQty!==undefined) return parseInt(r2[0].inQty); return getOrderQty(c,s); }
+  function getInQty(c,s){ var r=colorRows.filter(function(v){ return v.color===c&&v.size===s; }); if(r.length&&r[0].inQty!==undefined) return parseInt(r[0].inQty)||0; var r2=sizeRows.filter(function(v){ return v.parentColor===c&&v.size===s; }); if(r2.length&&r2[0].inQty!==undefined) return parseInt(r2[0].inQty)||0; return 0; }
 
   if(colors.length===0||sizes.length===0){
     var empty=document.createElement("p"); empty.textContent="등록된 수량 데이터가 없어요."; empty.style.cssText="color:var(--color-text-tertiary);text-align:center;padding:20px 0;"; modal.appendChild(empty);
@@ -3873,17 +3875,13 @@ function openQtyCheckModal(ev){
       var th=document.createElement("th"); th.textContent=s; th.colSpan=3;
       th.style.cssText="background:var(--color-bg-tertiary);border:1px solid var(--color-border);padding:7px 10px;font-weight:700;text-align:center;"; trh.appendChild(th);
     });
-    var thTot=document.createElement("th"); thTot.textContent="합계"; thTot.colSpan=3;
-    thTot.style.cssText="background:var(--color-bg-secondary);border:1px solid var(--color-border);padding:7px 10px;font-weight:700;text-align:center;"; trh.appendChild(thTot);
     thead.appendChild(trh);
 
     // 서브헤더
     var trSub=document.createElement("tr");
     var th0=document.createElement("th"); th0.style.cssText="background:var(--color-bg-tertiary);border:1px solid var(--color-border);"; trSub.appendChild(th0);
     var subStyle="background:var(--color-bg-tertiary);border:1px solid var(--color-border);padding:4px 8px;font-size:11px;font-weight:600;text-align:center;color:var(--color-text-secondary);";
-    var subStyleTot="background:var(--color-bg-secondary);border:1px solid var(--color-border);padding:4px 8px;font-size:11px;font-weight:600;text-align:center;color:var(--color-text-secondary);";
     sizes.forEach(function(){ ["발주","입고","차이"].forEach(function(t){ var th=document.createElement("th"); th.textContent=t; th.style.cssText=subStyle; trSub.appendChild(th); }); });
-    ["발주","입고","차이"].forEach(function(t){ var th=document.createElement("th"); th.textContent=t; th.style.cssText=subStyleTot; trSub.appendChild(th); });
     thead.appendChild(trSub); table.appendChild(thead);
 
     var tbody=document.createElement("tbody");
@@ -3905,19 +3903,12 @@ function openQtyCheckModal(ev){
         });
       });
       grandO+=rowO; grandI+=rowI;
-      var rowDiff=rowI-rowO, rowDiffColor=rowDiff<0?"#E24B4A":rowDiff>0?"#43A047":"var(--color-text-secondary)";
-      [rowO,rowI,(rowDiff>0?"+":"")+rowDiff].forEach(function(val,i){
-        var td=document.createElement("td"); td.textContent=val;
-        td.style.cssText="border:1px solid var(--color-border);padding:6px 10px;text-align:center;font-weight:700;background:var(--color-bg-secondary);"+(i===2?"color:"+rowDiffColor+";":"");
-        tr.appendChild(td);
-      });
       tbody.appendChild(tr);
     });
 
     // 합계행
     var trTot=document.createElement("tr");
     var tdTL=document.createElement("td"); tdTL.textContent="합계"; tdTL.style.cssText="border:1px solid var(--color-border);padding:7px 10px;font-weight:800;background:var(--color-bg-secondary);"; trTot.appendChild(tdTL);
-    var grandDiff=grandI-grandO;
     sizes.forEach(function(s){
       var diff=colI[s]-colO[s], diffColor=diff<0?"#E24B4A":diff>0?"#43A047":"var(--color-text-secondary)";
       [colO[s],colI[s],(diff>0?"+":"")+diff].forEach(function(val,i){
@@ -3926,52 +3917,8 @@ function openQtyCheckModal(ev){
         trTot.appendChild(td);
       });
     });
-    var grandDiffColor=grandDiff<0?"#E24B4A":grandDiff>0?"#43A047":"var(--color-text-secondary)";
-    [grandO,grandI,(grandDiff>0?"+":"")+grandDiff].forEach(function(val,i){
-      var td=document.createElement("td"); td.textContent=val;
-      td.style.cssText="border:1px solid var(--color-border);padding:7px 10px;text-align:center;font-weight:800;background:var(--color-bg-secondary);"+(i===2?"color:"+grandDiffColor+";":"");
-      trTot.appendChild(td);
-    });
     tbody.appendChild(trTot); table.appendChild(tbody); modal.appendChild(table);
 
-    // 사이즈별 차이 요약
-    var summaryTitle=document.createElement("div"); summaryTitle.textContent="사이즈별 차이 요약";
-    summaryTitle.style.cssText="font-size:13px;font-weight:800;color:var(--color-text-secondary);margin:4px 0 8px;";
-    modal.appendChild(summaryTitle);
-
-    var sTable=document.createElement("table"); sTable.style.cssText="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;";
-    var sThead=document.createElement("thead"); var sTrH=document.createElement("tr");
-    var sThL=document.createElement("th"); sThL.style.cssText="background:var(--color-bg-tertiary);border:1px solid var(--color-border);padding:6px 10px;width:70px;"; sTrH.appendChild(sThL);
-    sizes.forEach(function(s){ var th=document.createElement("th"); th.textContent=s; th.style.cssText="background:var(--color-bg-tertiary);border:1px solid var(--color-border);padding:6px 10px;font-weight:700;text-align:center;min-width:60px;"; sTrH.appendChild(th); });
-    var thAll=document.createElement("th"); thAll.textContent="전체"; thAll.style.cssText="background:var(--color-bg-secondary);border:1px solid var(--color-border);padding:6px 10px;font-weight:700;text-align:center;"; sTrH.appendChild(thAll);
-    sThead.appendChild(sTrH); sTable.appendChild(sThead);
-
-    var sTbody=document.createElement("tbody");
-    [{key:"order",label:"발주"},{key:"in",label:"입고"},{key:"diff",label:"차이"}].forEach(function(rd){
-      var tr=document.createElement("tr");
-      var tdL=document.createElement("td"); tdL.textContent=rd.label; tdL.style.cssText="border:1px solid var(--color-border);padding:6px 10px;font-weight:700;background:var(--color-bg-secondary);text-align:center;"; tr.appendChild(tdL);
-      var totalVal=0;
-      sizes.forEach(function(s){
-        var oT=colors.reduce(function(a,c){ return a+getOrderQty(c,s); },0);
-        var iT=colors.reduce(function(a,c){ return a+getInQty(c,s); },0);
-        var diff=iT-oT;
-        var val=rd.key==="order"?oT:rd.key==="in"?iT:diff;
-        totalVal+=val;
-        var td=document.createElement("td"); td.textContent=(rd.key==="diff"&&diff>0?"+":"")+val;
-        if(rd.key==="diff"){
-          td.style.cssText="border:1px solid var(--color-border);padding:8px 10px;text-align:center;font-size:16px;font-weight:800;color:"+(diff<0?"#E24B4A":diff>0?"#43A047":"var(--color-text-secondary)")+";background:"+(diff<0?"#FFF5F5":diff>0?"#F0FFF4":"var(--color-bg)")+";";
-        } else {
-          td.style.cssText="border:1px solid var(--color-border);padding:8px 10px;text-align:center;font-weight:600;";
-        }
-        tr.appendChild(td);
-      });
-      var tdAll=document.createElement("td"); tdAll.textContent=(rd.key==="diff"&&totalVal>0?"+":"")+totalVal;
-      var aStyle="border:1px solid var(--color-border);padding:8px 10px;text-align:center;font-weight:800;background:var(--color-bg-secondary);";
-      if(rd.key==="diff") aStyle+="font-size:16px;color:"+(totalVal<0?"#E24B4A":totalVal>0?"#43A047":"var(--color-text-secondary)")+";";
-      tdAll.style.cssText=aStyle; tr.appendChild(tdAll);
-      sTbody.appendChild(tr);
-    });
-    sTable.appendChild(sTbody); modal.appendChild(sTable);
   }
 
   var closeBtn=document.createElement("button"); closeBtn.textContent="닫기";
