@@ -565,7 +565,6 @@ function buildCell(dateStr, dayLabel, isOutside){
   var dayEvents = events.filter(function(e){
     var dateEnd = getEventDateEnd(e);
     if (dateEnd && dateEnd > e.date){
-      if (cellDow === 0 || cellDow === 6) return false;
       return dateStr >= e.date && dateStr <= dateEnd;
     }
     return e.date === dateStr;
@@ -598,15 +597,14 @@ function buildCell(dateStr, dayLabel, isOutside){
       var de=getEventDateEnd(re);
       if(eventLanes[re.id]===lane && re.date<=dateStr && de>=dateStr){ activeEv=re; break; }
     }
-    if(activeEv && wDow!==0 && wDow!==6){
+    if(activeEv){
       var c=CATS[activeEv.category]||MEMBERS[activeEv.category]||CATS.other;
       var de=getEventDateEnd(activeEv);
       var evWStart = activeEv.date>wStartStr ? activeEv.date : wStartStr;
       var evWEnd   = de<wEndStr ? de : wEndStr;
       var isLast   = dateStr===evWEnd;
-      var prevDate = new Date(cellDate); prevDate.setDate(cellDate.getDate()-1);
-      var prevDow  = prevDate.getDay();
-      var isFirst  = dateStr===activeEv.date || prevDow===0 || prevDow===6 || activeEv.date===dateStr;
+      // 주 시작(일요일) 또는 일정 시작일에서만 바를 새로 시작
+      var isFirst  = dateStr===activeEv.date || wDow===0;
       var PAD=10;
       var leftOff  = isFirst?"0px":"-"+PAD+"px";
       var barW     = "calc(100% + "+(isFirst?0:PAD)+"px + "+(isLast?0:PAD)+"px)";
@@ -628,20 +626,10 @@ function buildCell(dateStr, dayLabel, isOutside){
     })(activeEv,dateStr);
       cell.appendChild(bar);
     } else {
-      var hasBarHere = false;
-      for(var si2=0; si2<laneEvents.length; si2++){
-        var le2=laneEvents[si2];
-        if(le2.lane===lane){
-          var le2s=le2.ev.date;
-          var le2e=getEventDateEnd(le2.ev)||le2s;
-          if(dateStr>=le2s && dateStr<=le2e){ hasBarHere=true; break; }
-        }
-      }
-      if(hasBarHere){
-        var spacer=document.createElement("div");
-        spacer.style.cssText="height:"+BAR_H+"px;margin-bottom:3px;flex-shrink:0;";
-        cell.appendChild(spacer);
-      }
+      // 같은 주 안의 다른 셀과 레인 높이를 맞추기 위해 빈 자리를 채움
+      var spacer=document.createElement("div");
+      spacer.style.cssText="height:"+BAR_H+"px;margin-bottom:3px;flex-shrink:0;";
+      cell.appendChild(spacer);
     }
   }
 
