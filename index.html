@@ -1263,8 +1263,8 @@ function renderPanelList(dateStr){
         item.appendChild(qtyBtn);
       }
     }
-    // 입고완료 이벤트에 수량확인 버튼
-    if((ev.category==="production"||ev.category==="shoot"||ev.category==="pattern") &&
+    // 입고완료 이벤트에 수량확인 버튼 (메인만)
+    if(ev.category==="production" &&
        (ev.stage==="completed"||ev.stage==="completed_p")){
       var qtyCheckBtn = document.createElement("button");
       qtyCheckBtn.textContent = "📦 수량 확인";
@@ -1281,7 +1281,21 @@ function renderPanelList(dateStr){
       (function(cev){
         complBtn.addEventListener("click", function(e){
           e.stopPropagation();
-          openIncomingQtyModal(cev, dateStr);
+          if(cev.category==="production"){
+            // 메인은 수량 입력 팝업
+            openIncomingQtyModal(cev, dateStr);
+          } else {
+            // 샘플/패턴은 바로 입고완료 처리
+            complBtn.disabled = true; complBtn.textContent = "처리 중...";
+            var updated = Object.assign({}, cev, {stage:"completed"});
+            localUpdateEvent(updated);
+            renderCurrentView(); renderPanelList(dateStr);
+            showToast("입고 완료 처리 중...");
+            apiPost({action:"update", data:{id:cev.id,date:cev.date,category:cev.category,stage:"completed",company:cev.company||"",item:cev.item||"",imageUrl:cev.imageUrl||"",variants:cev.variants||"",description:cev.description||""}}).then(function(res){
+              if(res.success===false){ showToast("오류: "+(res.error||"")); loadEvents().then(function(){ renderCurrentView(); renderPanelList(dateStr); }); return; }
+              showToast("입고 완료!");
+            }).catch(function(){ showToast("오류. 새로고침 해주세요."); loadEvents().then(function(){ renderCurrentView(); renderPanelList(dateStr); }); });
+          }
         });
       })(ev);
       item.appendChild(complBtn);
@@ -3875,13 +3889,17 @@ function openQtyCheckModal(ev){
       var th=document.createElement("th"); th.textContent=s; th.colSpan=3;
       th.style.cssText="background:var(--color-bg-tertiary);border:1px solid var(--color-border);padding:7px 10px;font-weight:700;text-align:center;"; trh.appendChild(th);
     });
+    var thCT=document.createElement("th"); thCT.textContent="합계"; thCT.colSpan=3;
+    thCT.style.cssText="background:var(--color-bg-secondary);border:1px solid var(--color-border);padding:7px 10px;font-weight:700;text-align:center;"; trh.appendChild(thCT);
     thead.appendChild(trh);
 
     // 서브헤더
     var trSub=document.createElement("tr");
     var th0=document.createElement("th"); th0.style.cssText="background:var(--color-bg-tertiary);border:1px solid var(--color-border);"; trSub.appendChild(th0);
     var subStyle="background:var(--color-bg-tertiary);border:1px solid var(--color-border);padding:4px 8px;font-size:11px;font-weight:600;text-align:center;color:var(--color-text-secondary);";
+    var subStyleT="background:var(--color-bg-secondary);border:1px solid var(--color-border);padding:4px 8px;font-size:11px;font-weight:600;text-align:center;color:var(--color-text-secondary);";
     sizes.forEach(function(){ ["발주","입고","차이"].forEach(function(t){ var th=document.createElement("th"); th.textContent=t; th.style.cssText=subStyle; trSub.appendChild(th); }); });
+    ["발주","입고","차이"].forEach(function(t){ var th=document.createElement("th"); th.textContent=t; th.style.cssText=subStyleT; trSub.appendChild(th); });
     thead.appendChild(trSub); table.appendChild(thead);
 
     var tbody=document.createElement("tbody");
@@ -3903,6 +3921,13 @@ function openQtyCheckModal(ev){
         });
       });
       grandO+=rowO; grandI+=rowI;
+      // 컬러별 합계
+      var rowDiff=rowI-rowO, rowDiffColor=rowDiff<0?"#E24B4A":rowDiff>0?"#43A047":"var(--color-text-secondary)";
+      [rowO,rowI,(rowDiff>0?"+":"")+rowDiff].forEach(function(val,i){
+        var td=document.createElement("td"); td.textContent=val;
+        td.style.cssText="border:1px solid var(--color-border);padding:6px 10px;text-align:center;font-weight:700;background:var(--color-bg-secondary);"+(i===2?"color:"+rowDiffColor+";":"");
+        tr.appendChild(td);
+      });
       tbody.appendChild(tr);
     });
 
@@ -3916,6 +3941,13 @@ function openQtyCheckModal(ev){
         td.style.cssText="border:1px solid var(--color-border);padding:7px 10px;text-align:center;font-weight:700;background:var(--color-bg-secondary);"+(i===2?"color:"+diffColor+";":"");
         trTot.appendChild(td);
       });
+    });
+    // 전체 합계
+    var grandDiff=grandI-grandO, grandDiffColor=grandDiff<0?"#E24B4A":grandDiff>0?"#43A047":"var(--color-text-secondary)";
+    [grandO,grandI,(grandDiff>0?"+":"")+grandDiff].forEach(function(val,i){
+      var td=document.createElement("td"); td.textContent=val;
+      td.style.cssText="border:1px solid var(--color-border);padding:7px 10px;text-align:center;font-weight:800;background:var(--color-bg-secondary);"+(i===2?"color:"+grandDiffColor+";":"");
+      trTot.appendChild(td);
     });
     tbody.appendChild(trTot); table.appendChild(tbody); modal.appendChild(table);
 
